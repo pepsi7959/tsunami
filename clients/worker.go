@@ -38,6 +38,10 @@ func (w *Worker) UpdateErr() {
 	w.stat.numErr += 1
 }
 
+func (w Worker) GetNumErr() int {
+	return w.stat.numErr
+}
+
 func (w Worker) GetNumRes() int {
 	return w.stat.numRes
 }

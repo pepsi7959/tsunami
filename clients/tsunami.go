@@ -66,13 +66,19 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 		<-c
 
 		var numRes int = 0
+		var numErr int = 0
 		for i, w := range ts.workers {
-			fmt.Printf("update worker[%d]\n", i)
-			fmt.Println("number Of Request: %d", w.GetNumRes())
-			fmt.Println("Average Response Of Request: %d", w.GetAvgRes())
+			fmt.Println("update worker id: ", i)
+			fmt.Println("number Of Request: ", w.GetNumRes())
+			fmt.Println("Average Response Of Request: ", w.GetAvgRes())
 			numRes += w.GetNumRes()
+			numErr += w.GetNumErr()
 		}
+
 		fmt.Println("----------------------------------------")
+		fmt.Println("Number of Error   : ", numErr)
+		fmt.Println("Number of Requests: ", numRes)
+		fmt.Println("Elaped time       : ", time.Since(ts.start))
 		fmt.Println("Request Per Second: ", float64(numRes)/time.Since(ts.start).Seconds())
 		fmt.Println("----------------------------------------")
 
