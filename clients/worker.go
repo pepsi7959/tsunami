@@ -77,7 +77,9 @@ func (w *Worker) Run() {
 
 func (w *Worker) do_job() {
 	//fmt.Printf("Do job: Calling %s\n", w.url())
-	clnt := &http.Client{}
+	tr := &http.Transport{}
+	defer tr.CloseIdleConnections()
+	clnt := &http.Client{Transport: tr}
 	start := time.Now()
 	resp, err := clnt.Get(w.url())
 	if err == nil {
