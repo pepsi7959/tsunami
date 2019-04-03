@@ -16,6 +16,11 @@ type Tsunami struct {
 	max_queues int
 	jobs       chan Job
 	workers    []Worker
+
+	done bool
+
+	start time.Time
+	end   time.Time
 }
 
 func (ts *Tsunami) Init(max_queues int) {
@@ -26,15 +31,16 @@ func (ts *Tsunami) Init(max_queues int) {
 	ts.jobs = make(chan Job, ts.max_queues)
 }
 
-func (ts *Tsunami) Add_worker(w Worker) {
+func (ts *Tsunami) AddWorker(w Worker) {
 	w.jobs = &ts.jobs
 	ts.workers = append(ts.workers, w)
 }
 
 func (ts *Tsunami) Run() {
 	fmt.Println("Start worker")
-	for _, w := range ts.workers {
-		go w.Run()
+	ts.start = time.Now()
+	for i, _ := range ts.workers {
+		go ts.workers[i].Run()
 	}
 }
 
@@ -44,24 +50,57 @@ func (ts *Tsunami) Stop() {
 		fmt.Println("Stoping worker[%d]\n", i)
 		w.Done <- true
 	}
+	ts.done = true
+}
+
+func (ts *Tsunami) GenLoad() {
+	ts.done = false
+	for ts.done != true {
+		ts.jobs <- Job{}
+	}
+}
+
+func (ts *Tsunami) Monitoring(d time.Duration) {
+	for ts.done != true {
+		c := time.Tick(d)
+		<-c
+
+		var numRes int = 0
+		for i, w := range ts.workers {
+			fmt.Printf("update worker[%d]\n", i)
+			fmt.Println("number Of Request: %d", w.GetNumRes())
+			fmt.Println("Average Response Of Request: %d", w.GetAvgRes())
+			numRes += w.GetNumRes()
+		}
+		fmt.Println("----------------------------------------")
+		fmt.Println("Request Per Second: ", float64(numRes)/time.Since(ts.start).Seconds())
+		fmt.Println("----------------------------------------")
+
+	}
+
 }
 
 func main() {
-	app := Tsunami{}
-	app.Init(100)
-	worker := Worker{conf: Conf{url: "http://164.115.28.52/test.php", host: "localhost", port: "80"}}
-	//worker := Worker{conf: Conf{url: "http://localhost:8080/solarlaa-admin/api/v1/real-mon/m/users/123/devices/123", host: "localhost", port: "80"}}
-	app.Add_worker(worker)
 
+	// Read user parameter
+	conf := ReadConf()
+
+	// Initialize Tsunami
+	app := Tsunami{conf: conf}
+	app.Init(100)
+
+	for i := 0; i < conf.concurrence; i++ {
+		worker := Worker{conf: conf}
+		app.AddWorker(worker)
+	}
 	app.Run()
 
-	go func() {
-		for {
-			fmt.Println("gen work")
-			app.jobs <- Job{}
-		}
-	}()
+	go app.GenLoad()
 
-	c := time.Tick(30 * time.Second)
+	go app.Monitoring(2 * time.Second)
+
+	c := time.Tick(60 * time.Second)
 	<-c
+
+	app.Stop()
 }
