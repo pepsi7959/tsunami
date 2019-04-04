@@ -13,7 +13,7 @@ type Stat struct {
 
 	minResTime int64
 	maxResTime int64
-	avgResTime int64
+	avgResTime float64
 
 	numErr int
 }
@@ -47,7 +47,7 @@ func (w Worker) GetNumRes() int {
 }
 
 // Average time in micro second
-func (w Worker) GetAvgRes() int64 {
+func (w Worker) GetAvgRes() float64 {
 	return w.stat.avgResTime / 1000
 }
 
@@ -59,7 +59,7 @@ func (w *Worker) UpdateStat(resTime int64) {
 	if resTime < w.stat.maxResTime {
 		w.stat.maxResTime = resTime
 	}
-	w.stat.avgResTime = (w.stat.avgResTime + resTime) / 2
+	w.stat.avgResTime = (w.stat.avgResTime + float64(resTime)) / 2
 	w.stat.numRes += 1
 }
 
