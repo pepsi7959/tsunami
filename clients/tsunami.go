@@ -83,22 +83,27 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 
 		var numRes int = 0
 		var numErr int = 0
+		var avg float64 = 0.0
+		var workers int = len(ts.workers)
 
 		if ts.enableReport == true {
-			for i, w := range ts.workers {
-				fmt.Println("update worker id: ", i)
-				fmt.Println("number Of Request: ", w.GetNumRes())
-				fmt.Println("Average Response Of Request: ", w.GetAvgRes())
+			for _, w := range ts.workers {
+				//fmt.Println("update worker id: ", i)
+				//fmt.Println("number Of Request: ", w.GetNumRes())
+				//fmt.Println("Average Response Of Request: ", w.GetAvgRes())
 				numRes += w.GetNumRes()
 				numErr += w.GetNumErr()
+				avg += w.GetAvgRes()
 			}
+			avg = avg / float64(workers)
 			fmt.Println("\033[H\033[2J")
 			fmt.Println("----------------------------------------")
-			fmt.Println("Number of Worker  : ", len(ts.workers))
-			fmt.Println("Number of Errors  : ", numErr)
-			fmt.Println("Number of Requests: ", numRes)
-			fmt.Println("Elapped time      : ", time.Since(ts.start))
-			fmt.Println("Request Per Second: ", float64(numRes)/time.Since(ts.start).Seconds())
+			fmt.Println("Number of Worker       : ", len(ts.workers))
+			fmt.Println("Number of Errors       : ", numErr)
+			fmt.Println("Number of Requests     : ", numRes)
+			fmt.Printf("Average Response(msec)  : %.3f\n", avg)
+			fmt.Printf("Elapped time(sec)       : %.0f\n", time.Since(ts.start).Seconds())
+			fmt.Printf("Request Per Second      : %.2f\n", float64(numRes)/time.Since(ts.start).Seconds())
 			fmt.Println("----------------------------------------")
 		}
 	}
