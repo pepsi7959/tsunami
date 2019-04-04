@@ -48,7 +48,7 @@ func (w Worker) GetNumRes() int {
 
 // Average time in micro second
 func (w Worker) GetAvgRes() float64 {
-	return w.stat.avgResTime / 1000
+	return w.stat.avgResTime / 1000000
 }
 
 func (w *Worker) UpdateStat(resTime int64) {
