@@ -49,6 +49,30 @@ It's load generator platform designed to test performance. In case of tuning sys
 
 ----
 
+## Installation
+
+  - Prerequisite for building __Tsunami__
+    - go 
+    - make
+    
+  - source code
+    check out source from github.com
+    ```bash
+    git clone https://github.com/pepsi7959/tsunami.git
+    ```
+  
+  - build
+    ```bash
+    cd clients && make
+    ```
+  
+  - run
+    ```bash
+    /.tsunami --url [url]
+    ```
+   
+----
+
 ## Features
   - **Realtime Monitoing**, There monitoring channel to monitor real-time statistics.
   - **Stand Alone**, Use only single binary.
