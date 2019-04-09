@@ -27,7 +27,7 @@ It's load generator platform designed to test performance. In case of tuning sys
     *               hard    nofile           65536
     ```
     
-  - tcp configruation
+  - tcp configuration
     
     __checking config__
     
@@ -52,8 +52,11 @@ It's load generator platform designed to test performance. In case of tuning sys
 ## Installation
 
   - Prerequisite for building __Tsunami__
-    - go 
-    - make
+
+    ```bash
+    apt install make
+    apt install golang-go
+    ```
     
   - source code
     check out source from github.com
