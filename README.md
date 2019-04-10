@@ -66,12 +66,18 @@ It's load generator platform designed to test performance. In case of tuning sys
   
   - build
     ```bash
-    cd clients && make
+    cd clients
+    make && make install
     ```
-  
+  - set ENV
+    ```bash
+    vim ~/.bash_profile
+    # if /user/local/bin doesn't exist, than add the /usr/local/bin to .bash_profile
+    export PATH=/user/local/bin:$PATH
+    ```
   - run
     ```bash
-    /.tsunami --url [url]
+    tsunami --url [url]
     ```
    
 ----
