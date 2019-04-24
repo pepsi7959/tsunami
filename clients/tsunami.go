@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"net/http"
 )
 
 type Tsunami struct {
@@ -40,9 +41,18 @@ func (ts *Tsunami) Init(max_queues int) {
 	fmt.Println("initialize logger")
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
 	ts.jobs = make(chan Job, ts.max_queues)
-
+	
+	defaultRoundTripper := http.DefaultTransport
+  	defaultTransportPointer, ok := defaultRoundTripper.(*http.Transport)
+  	if !ok {
+      		panic(fmt.Sprintf("defaultRoundTripper not an *http.Transport"))
+  	}
+	defaultTransport := *defaultTransportPointer // dereference it to get a copy of the struct that the pointer points to
+	//defaultTransport.MaxIdleConns = 100
+	//defaultTransport.MaxIdleConnsPerHost = 100
+	myClient := &http.Client{Transport: &defaultTransport}
 	for i := 0; i < ts.conf.concurrence; i++ {
-		worker := Worker{conf: ts.conf}
+		worker := Worker{conf: ts.conf, client: myClient}
 		ts.AddWorker(worker)
 	}
 }
@@ -176,7 +186,7 @@ func main() {
 
 	// Initialize Tsunami
 	app := Tsunami{conf: conf, duration: 3600, refresh: 2, enableReport: true}
-	app.Init(100)
+	app.Init(100000)
 
 	app.Run()
 
@@ -189,6 +199,7 @@ func main() {
 	shell.AddCmd("report", app.SetEnableReport)
 	go shell.Run()
 
+	go app.GenLoad()
 	go app.GenLoad()
 
 	go app.Monitoring(time.Duration(app.refresh) * time.Second)
