@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -93,7 +92,6 @@ func (w *Worker) do() {
 	err := w.client.Do(req, resp)
 	if err != nil {
 		w.UpdateErr()
-		log.Fatal(err)
 	} /*else {
 		code = resp.StatusCode()
 	}*/
