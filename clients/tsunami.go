@@ -43,7 +43,7 @@ func (ts *Tsunami) Init(max_queues int) {
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
 	ts.jobs = make(chan Job, ts.max_queues)
 
-	c := &fasthttp.HostClient{Addr: "122.155.4.110", MaxConns: 1023, ReadTimeout: time.Second * 10, WriteTimeout: time.Second * 10}
+	c := &fasthttp.HostClient{Addr: ts.conf.host, MaxConns: ts.conf.maxConns, ReadTimeout: time.Second * 30, WriteTimeout: time.Second * 30}
 	for i := 0; i < ts.conf.concurrence; i++ {
 		worker := Worker{conf: ts.conf, client: c}
 		ts.AddWorker(worker)

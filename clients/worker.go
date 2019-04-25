@@ -92,9 +92,11 @@ func (w *Worker) do() {
 	err := w.client.Do(req, resp)
 	if err != nil {
 		w.UpdateErr()
-	} /*else {
-		code = resp.StatusCode()
-	}*/
+		fmt.Println(err)
+	} else {
+		//code = resp.StatusCode()
+		//fmt.Println(string(resp.Body()))
+	}
 
 	w.UpdateStat(time.Since(start).Nanoseconds())
 
