@@ -90,7 +90,7 @@ func (w *Worker) do_job() {
 	client.Do(req, resp)
 	w.UpdateStat(time.Since(start).Nanoseconds())
 	bodyBytes := resp.Body()
-	if bodyBytes != nil {
+	if bodyBytes == nil {
 		w.UpdateErr()
 	}
 }
