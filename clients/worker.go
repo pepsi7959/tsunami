@@ -2,11 +2,15 @@ package main
 
 import (
 	"fmt"
-	"net/http"
+	"log"
 	"time"
 
 	"github.com/valyala/fasthttp"
 )
+
+type client interface {
+	do() (code int, msTaken uint64, err error)
+}
 
 type Stat struct {
 	numReq int
@@ -23,7 +27,7 @@ type Worker struct {
 	conf   Conf
 	jobs   *chan Job
 	Done   chan bool
-	client *http.Client
+	client *fasthttp.HostClient
 	stat   Stat
 }
 
@@ -69,14 +73,14 @@ func (w *Worker) Run() {
 	for {
 		//select {
 		//case <-*w.jobs:
-		w.do_job()
+		w.do()
 		//case <-w.Done:
 		//		fmt.Println("quit worker")
 		//	}
 	}
 }
 
-func (w *Worker) do_job() {
+func (w *Worker) do() {
 	//fmt.Printf("Do job: Calling %s\n", w.url())
 	//tr := &http.Transport{}
 	//defer tr.CloseIdleConnections()
@@ -86,11 +90,17 @@ func (w *Worker) do_job() {
 	req := fasthttp.AcquireRequest()
 	req.SetRequestURI(w.url())
 	resp := fasthttp.AcquireResponse()
-	client := &fasthttp.Client{}
-	client.Do(req, resp)
-	w.UpdateStat(time.Since(start).Nanoseconds())
-	bodyBytes := resp.Body()
-	if bodyBytes == nil {
+	err := w.client.Do(req, resp)
+	if err != nil {
 		w.UpdateErr()
-	}
+		log.Fatal(err)
+	} /*else {
+		code = resp.StatusCode()
+	}*/
+
+	w.UpdateStat(time.Since(start).Nanoseconds())
+
+	fasthttp.ReleaseRequest(req)
+	fasthttp.ReleaseResponse(resp)
+
 }

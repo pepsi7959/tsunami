@@ -7,7 +7,8 @@ import (
 	"os"
 	"strconv"
 	"time"
-	"net/http"
+
+	"github.com/valyala/fasthttp"
 )
 
 type Tsunami struct {
@@ -41,18 +42,10 @@ func (ts *Tsunami) Init(max_queues int) {
 	fmt.Println("initialize logger")
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
 	ts.jobs = make(chan Job, ts.max_queues)
-	
-	defaultRoundTripper := http.DefaultTransport
-  	defaultTransportPointer, ok := defaultRoundTripper.(*http.Transport)
-  	if !ok {
-      		panic(fmt.Sprintf("defaultRoundTripper not an *http.Transport"))
-  	}
-	defaultTransport := *defaultTransportPointer // dereference it to get a copy of the struct that the pointer points to
-	//defaultTransport.MaxIdleConns = 100
-	//defaultTransport.MaxIdleConnsPerHost = 100
-	myClient := &http.Client{Transport: &defaultTransport}
+
+	c := &fasthttp.HostClient{Addr: "122.155.4.110", MaxConns: 1023, ReadTimeout: time.Second * 10, WriteTimeout: time.Second * 10}
 	for i := 0; i < ts.conf.concurrence; i++ {
-		worker := Worker{conf: ts.conf, client: myClient}
+		worker := Worker{conf: ts.conf, client: c}
 		ts.AddWorker(worker)
 	}
 }
