@@ -18,6 +18,7 @@ func ReadConf() Conf {
 	var path = flag.String("uri", "/", "uri path")
 	var concurrence = flag.Int("concurrence", 10, "number of clients, which send request to the tagets simultaneously")
 	var maxQueues = flag.Int("maxQueues", 60000, "maxQueues are wating job generated controlled by master node")
+	var maxConns = flag.Int("maxConns", 1024, "maxConns are number of connections")
 
 	flag.Parse()
 
@@ -26,5 +27,5 @@ func ReadConf() Conf {
 		os.Exit(1)
 	}
 
-	return Conf{url: *url, host: *host, port: *port, path: *path, concurrence: *concurrence, maxQueues: *maxQueues}
+	return Conf{url: *url, host: *host, port: *port, path: *path, concurrence: *concurrence, maxQueues: *maxQueues, maxConns: *maxConns}
 }

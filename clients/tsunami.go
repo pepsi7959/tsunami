@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
 
 type Tsunami struct {
@@ -41,8 +43,9 @@ func (ts *Tsunami) Init(max_queues int) {
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
 	ts.jobs = make(chan Job, ts.max_queues)
 
+	c := &fasthttp.HostClient{Addr: ts.conf.host, MaxConns: ts.conf.maxConns, ReadTimeout: time.Second * 30, WriteTimeout: time.Second * 30}
 	for i := 0; i < ts.conf.concurrence; i++ {
-		worker := Worker{conf: ts.conf}
+		worker := Worker{conf: ts.conf, client: c}
 		ts.AddWorker(worker)
 	}
 }
@@ -176,7 +179,7 @@ func main() {
 
 	// Initialize Tsunami
 	app := Tsunami{conf: conf, duration: 3600, refresh: 2, enableReport: true}
-	app.Init(100)
+	app.Init(100000)
 
 	app.Run()
 
@@ -189,6 +192,7 @@ func main() {
 	shell.AddCmd("report", app.SetEnableReport)
 	go shell.Run()
 
+	go app.GenLoad()
 	go app.GenLoad()
 
 	go app.Monitoring(time.Duration(app.refresh) * time.Second)

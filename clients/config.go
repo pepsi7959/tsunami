@@ -7,5 +7,6 @@ type Conf struct {
 	port        string "80"
 	path        string "/"
 	concurrence int
+	maxConns    int
 	maxQueues   int
 }
