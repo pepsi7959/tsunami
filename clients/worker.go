@@ -2,10 +2,14 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
+
+type client interface {
+	do() (code int, msTaken uint64, err error)
+}
 
 type Stat struct {
 	numReq int
@@ -19,11 +23,11 @@ type Stat struct {
 }
 
 type Worker struct {
-	conf Conf
-	jobs *chan Job
-	Done chan bool
-
-	stat Stat
+	conf   Conf
+	jobs   *chan Job
+	Done   chan bool
+	client *fasthttp.HostClient
+	stat   Stat
 }
 
 func (w *Worker) url() string {
@@ -66,35 +70,37 @@ func (w *Worker) UpdateStat(resTime int64) {
 func (w *Worker) Run() {
 	fmt.Println("Run Worker...")
 	for {
-		select {
-		case <-*w.jobs:
-			w.do_job()
-		case <-w.Done:
-			fmt.Println("quit worker")
-		}
+		//select {
+		//case <-*w.jobs:
+		w.do()
+		//case <-w.Done:
+		//		fmt.Println("quit worker")
+		//	}
 	}
 }
 
-func (w *Worker) do_job() {
+func (w *Worker) do() {
 	//fmt.Printf("Do job: Calling %s\n", w.url())
-	tr := &http.Transport{}
-	defer tr.CloseIdleConnections()
-	clnt := &http.Client{Transport: tr}
+	//tr := &http.Transport{}
+	//defer tr.CloseIdleConnections()
+	//clnt := &http.Client{Transport: tr}
+	//clnt := &http.Client{Transport: tr}
 	start := time.Now()
-	resp, err := clnt.Get(w.url())
-	if err == nil {
-		_, err := ioutil.ReadAll(resp.Body)
-		if err == nil {
-			defer resp.Body.Close()
-			//fmt.Printf("resposne body : %s\n", body)
-			w.UpdateStat(time.Since(start).Nanoseconds())
-		} else {
-			w.UpdateErr()
-			fmt.Printf("ioutil.ReadAll err: %s\n", err)
-		}
-	} else {
+	req := fasthttp.AcquireRequest()
+	req.SetRequestURI(w.url())
+	resp := fasthttp.AcquireResponse()
+	err := w.client.Do(req, resp)
+	if err != nil {
 		w.UpdateErr()
-		fmt.Printf("http.Client err: %s\n", err)
+		fmt.Println(err)
+	} else {
+		//code = resp.StatusCode()
+		//fmt.Println(string(resp.Body()))
 	}
+
+	w.UpdateStat(time.Since(start).Nanoseconds())
+
+	fasthttp.ReleaseRequest(req)
+	fasthttp.ReleaseResponse(resp)
 
 }
