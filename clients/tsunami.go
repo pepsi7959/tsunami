@@ -2,14 +2,20 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+
+	"github.com/tsunami/clients/api"
 	"github.com/valyala/fasthttp"
 )
+
+var APIV1 = "/api/v1"
 
 type Tsunami struct {
 	conf Conf
@@ -172,7 +178,63 @@ func (ts *Tsunami) Reload(conf map[string]string) {
 	}
 }
 
+func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "{}")
+}
+
+// {
+//	"cmd": "start|restart|stop"
+// }
+
+func (ts *Tsunami) Cmd(w http.ResponseWriter, r *http.Request) {
+	d := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	// d.DisallowUnknownFields()
+	t := struct {
+		cmd string `json:"cmd"`
+	}{}
+	err := d.Decode(&t)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+	//if t.cmd == "" {
+	//		http.Error(w, "missing field 'cmd' from JSON object", http.StatusBadRequest)
+	//		return
+	//	}
+
+	// do an action
+	switch t.cmd {
+	case "start":
+		fmt.Println("start")
+		break
+	case "stop":
+		fmt.Println("stop")
+		break
+	case "restart":
+		fmt.Println("restart")
+		break
+	default:
+		http.Error(w, "Unkown command", http.StatusBadRequest)
+		//		return
+	}
+	data := make(map[string]string)
+	data["a"] = "aa"
+	data["b"] = "bb"
+	CreateJsonRes(&w, &data, nil)
+	return
+}
+
+func (ts *Tsunami) CmdStart()   {}
+func (ts *Tsunami) CmdStop()    {}
+func (ts *Tsunami) CmdRestart() {}
+
+func (ts *Tsunami) SetConf(c Conf) {
+	ts.conf = c
+}
+
 func main() {
+
+	api := &api.App{}
 
 	// Read user parameter
 	conf := ReadConf()
@@ -196,6 +258,12 @@ func main() {
 	go app.GenLoad()
 
 	go app.Monitoring(time.Duration(app.refresh) * time.Second)
+
+	// Start Api Service
+	api.Init("8091")
+	api.AddApi(APIV1+"/metrics", app.GetMetrics)
+	api.AddApi(APIV1+"/cmd", app.Cmd)
+	api.Run()
 
 	c := time.Tick(time.Duration(app.duration) * time.Second)
 	<-c

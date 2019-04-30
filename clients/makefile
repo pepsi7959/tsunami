@@ -4,7 +4,7 @@ clean:
 	rm tsunami
 
 tsunami:
-	go build tsunami.go shell.go help.go config.go job.go worker.go
+	go build tsunami.go json.go shell.go help.go config.go job.go worker.go
 
 install:
 	cp -f tsunami /usr/local/bin
