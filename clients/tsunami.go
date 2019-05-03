@@ -200,8 +200,8 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	data["errors_count"] = fmt.Sprintf("%d", numErr)
 	data["avg"] = fmt.Sprintf("%f", avg)
 	data["elaped_time"] = fmt.Sprintf("%f", time.Since(ts.start).Seconds())
-	data["rps"] = fmt.Sprintf("%f", float64(numRes))
-	data["requests_count"] = fmt.Sprintf("%f", float64(numRes)/time.Since(ts.start).Seconds())
+	data["requests_count"] = fmt.Sprintf("%f", float64(numRes))
+	data["rps"] = fmt.Sprintf("%f", float64(numRes)/time.Since(ts.start).Seconds())
 
 	WriteSuccess(&w, &data, nil)
 	return
