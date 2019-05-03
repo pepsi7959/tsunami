@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -24,6 +25,8 @@ func CreateJsonRes(w *http.ResponseWriter, data *map[string]string, err *HttpErr
 		for k, v := range *data {
 			fmt.Fprintf(&b, "\"%s\":\"%s\",", k, v)
 		}
-		fmt.Fprintf(*w, "{\"data\": { %s }", b)
+		resp := Response{Data: data}
+		j_resp, _ := json.Marshal(&resp)
+		fmt.Fprintf(*w, string(j_resp))
 	}
 }

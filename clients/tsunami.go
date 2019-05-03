@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
-
 
 	"github.com/tsunami/clients/api"
 	"github.com/valyala/fasthttp"
@@ -179,7 +180,31 @@ func (ts *Tsunami) Reload(conf map[string]string) {
 }
 
 func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "{}")
+
+	defer r.Body.Close()
+
+	var avg float64
+	var numRes, numErr int
+	data := make(map[string]string)
+
+	for _, w := range ts.workers {
+		numRes += w.GetNumRes()
+		numErr += w.GetNumErr()
+		avg += w.GetAvgRes()
+	}
+
+	workers := len(ts.workers)
+	avg = avg / float64(workers)
+
+	data["workers_count"] = fmt.Sprintf("%d", workers)
+	data["errors_count"] = fmt.Sprintf("%d", numErr)
+	data["avg"] = fmt.Sprintf("%f", avg)
+	data["elaped_time"] = fmt.Sprintf("%f", time.Since(ts.start).Seconds())
+	data["rps"] = fmt.Sprintf("%f", float64(numRes))
+	data["requests_count"] = fmt.Sprintf("%f", float64(numRes)/time.Since(ts.start).Seconds())
+
+	WriteSuccess(&w, &data, nil)
+	return
 }
 
 // {
@@ -187,23 +212,24 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 // }
 
 func (ts *Tsunami) Cmd(w http.ResponseWriter, r *http.Request) {
-	d := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 	// d.DisallowUnknownFields()
-	t := struct {
-		cmd string `json:"cmd"`
-	}{}
-	err := d.Decode(&t)
-	if err != nil {
+
+	var req Request
+	d := json.NewDecoder(r.Body)
+	err := d.Decode(&req)
+
+	if err == io.EOF {
+		//do nothing
+	} else if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-	//if t.cmd == "" {
-	//		http.Error(w, "missing field 'cmd' from JSON object", http.StatusBadRequest)
-	//		return
-	//	}
 
-	// do an action
-	switch t.cmd {
+	body, _ := ioutil.ReadAll(r.Body)
+
+	fmt.Printf("Received msg_len[%d] msg: %s\n", len(body), body)
+
+	switch req.Cmd {
 	case "start":
 		fmt.Println("start")
 		break
@@ -217,10 +243,14 @@ func (ts *Tsunami) Cmd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unkown command", http.StatusBadRequest)
 		//		return
 	}
+
 	data := make(map[string]string)
 	data["a"] = "aa"
 	data["b"] = "bb"
-	CreateJsonRes(&w, &data, nil)
+
+	WriteSuccess(&w, &data, nil)
+	//CreateJsonRes(&w, &data, nil)
+
 	return
 }
 
