@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -50,7 +51,7 @@ func (ts *Tsunami) Init(max_queues int) {
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
 	ts.jobs = make(chan Job, ts.max_queues)
 
-	c := &fasthttp.HostClient{Addr: ts.conf.host, MaxConns: ts.conf.maxConns, ReadTimeout: time.Second * 30, WriteTimeout: time.Second * 30}
+	c := &fasthttp.HostClient{Addr: ts.conf.host, MaxConns: ts.conf.maxConns, ReadTimeout: time.Second * 30, WriteTimeout: time.Second * 30, Dial: func(addr string) (net.Conn, error) {return fasthttp.DialTimeout(addr, time.Second*60)}}
 	for i := 0; i < ts.conf.concurrence; i++ {
 		worker := Worker{conf: ts.conf, client: c}
 		ts.AddWorker(worker)
