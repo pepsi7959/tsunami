@@ -57,7 +57,11 @@ It's load generator platform designed to test performance. In case of tuning sys
     apt install make
     apt install golang-go
     ```
+  - external library
     
+    ```
+    go get github.com/valyala/fasthttp
+    ```
   - source code
     check out source from github.com
     ```bash
@@ -66,7 +70,7 @@ It's load generator platform designed to test performance. In case of tuning sys
   
   - build
     ```bash
-    cd clients
+    cd tsunami/clients
     make && make install
     ```
   - set ENV
