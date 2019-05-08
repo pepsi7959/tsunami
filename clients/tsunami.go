@@ -95,6 +95,8 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 		var numRes int = 0
 		var numErr int = 0
 		var avg float64 = 0.0
+		var max float64 = 0.0
+		var min float64 = 9999.99 
 		var workers int = len(ts.workers)
 
 		if ts.enableReport == true {
@@ -105,6 +107,13 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 				numRes += w.GetNumRes()
 				numErr += w.GetNumErr()
 				avg += w.GetAvgRes()
+				if w.GetMinRes()  < min {
+					min = w.GetMinRes()
+				}
+
+				if w.GetMaxRes() > max {
+					max = w.GetMaxRes()
+				}
 			}
 			avg = avg / float64(workers)
 			fmt.Println("\033[H\033[2J")
@@ -113,6 +122,8 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 			fmt.Println("Number of Errors       : ", numErr)
 			fmt.Println("Number of Requests     : ", numRes)
 			fmt.Printf("Average Response(msec)  : %.3f\n", avg)
+			fmt.Printf("Max Response(msec)      : %.3f\n", max)
+			fmt.Printf("Min Response(msec)      : %.3f\n", min)
 			fmt.Printf("Elapped time(sec)       : %.0f\n", time.Since(ts.start).Seconds())
 			fmt.Printf("Request Per Second      : %.2f\n", float64(numRes)/time.Since(ts.start).Seconds())
 			fmt.Println("----------------------------------------")
