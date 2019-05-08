@@ -50,20 +50,36 @@ func (w Worker) GetNumRes() int {
 	return w.stat.numRes
 }
 
+// Maximum time in micro second
+func (w Worker) GetMaxRes() float64 {
+	return float64(w.stat.maxResTime) / 1000000.00
+}
+
+// Mininum time in micro second
+func (w Worker) GetMinRes() float64 {
+	return float64(w.stat.minResTime) / 1000000.00
+}
+
 // Average time in micro second
 func (w Worker) GetAvgRes() float64 {
 	return w.stat.avgResTime / 1000000
 }
 
 func (w *Worker) UpdateStat(resTime int64) {
-	if resTime > w.stat.minResTime {
+	if resTime < w.stat.minResTime || w.stat.minResTime == 0 {
 		w.stat.minResTime = resTime
 	}
 
-	if resTime < w.stat.maxResTime {
+	if resTime > w.stat.maxResTime {
 		w.stat.maxResTime = resTime
 	}
-	w.stat.avgResTime = (w.stat.avgResTime + float64(resTime)) / 2
+
+	if w.stat.avgResTime == 0 {
+		w.stat.avgResTime = float64(resTime)
+	} else {
+		w.stat.avgResTime = (w.stat.avgResTime + float64(resTime)) / 2
+	}
+
 	w.stat.numRes += 1
 }
 
@@ -85,10 +101,10 @@ func (w *Worker) do() {
 	//defer tr.CloseIdleConnections()
 	//clnt := &http.Client{Transport: tr}
 	//clnt := &http.Client{Transport: tr}
-	start := time.Now()
 	req := fasthttp.AcquireRequest()
 	req.SetRequestURI(w.url())
 	resp := fasthttp.AcquireResponse()
+	start := time.Now()
 	err := w.client.Do(req, resp)
 	if err != nil {
 		w.UpdateErr()
