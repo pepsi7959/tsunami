@@ -18,6 +18,11 @@ import (
 )
 
 var APIV1 = "/api/v1"
+var APIV1_ADMIN = "/api/v1/admin"
+
+type TSControl struct {
+	services map[string]*Tsunami
+}
 
 type Tsunami struct {
 	conf Conf
@@ -51,7 +56,7 @@ func (ts *Tsunami) Init(max_queues int) {
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
 	ts.jobs = make(chan Job, ts.max_queues)
 
-	c := &fasthttp.HostClient{Addr: ts.conf.host, MaxConns: ts.conf.maxConns, ReadTimeout: time.Second * 30, WriteTimeout: time.Second * 30, Dial: func(addr string) (net.Conn, error) {return fasthttp.DialTimeout(addr, time.Second*60)}}
+	c := &fasthttp.HostClient{Addr: ts.conf.host, MaxConns: ts.conf.maxConns, ReadTimeout: time.Second * 30, WriteTimeout: time.Second * 30, Dial: func(addr string) (net.Conn, error) { return fasthttp.DialTimeout(addr, time.Second*60) }}
 	for i := 0; i < ts.conf.concurrence; i++ {
 		worker := Worker{conf: ts.conf, client: c}
 		ts.AddWorker(worker)
@@ -96,7 +101,7 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 		var numErr int = 0
 		var avg float64 = 0.0
 		var max float64 = 0.0
-		var min float64 = 9999.99 
+		var min float64 = 9999.99
 		var workers int = len(ts.workers)
 
 		if ts.enableReport == true {
@@ -107,7 +112,7 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 				numRes += w.GetNumRes()
 				numErr += w.GetNumErr()
 				avg += w.GetAvgRes()
-				if w.GetMinRes()  < min {
+				if w.GetMinRes() < min {
 					min = w.GetMinRes()
 				}
 
@@ -223,10 +228,10 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 //	"cmd": "start|restart|stop"
 // }
 
-func (ts *Tsunami) Cmd(w http.ResponseWriter, r *http.Request) {
+func (c *TSControl) Cmd(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	// d.DisallowUnknownFields()
-
+	var data map[string]string
 	var req Request
 	d := json.NewDecoder(r.Body)
 	err := d.Decode(&req)
@@ -256,35 +261,59 @@ func (ts *Tsunami) Cmd(w http.ResponseWriter, r *http.Request) {
 		//		return
 	}
 
-	data := make(map[string]string)
-	data["a"] = "aa"
-	data["b"] = "bb"
-
 	WriteSuccess(&w, &data, nil)
-	//CreateJsonRes(&w, &data, nil)
-
 	return
 }
 
-func (ts *Tsunami) CmdStart()   {}
-func (ts *Tsunami) CmdStop()    {}
-func (ts *Tsunami) CmdRestart() {}
+// Decoder
+func (ctrl *TSControl) Decoder(w http.ResponseWriter, r *http.Request, v interface{}) {
+	defer r.Body.Close()
+
+	d := json.NewDecoder(r.Body)
+	err := d.Decode(v)
+
+	if err == io.EOF {
+		//do nothing
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
+	var req Request
+	ctrl.Decoder(w, r, &req)
+
+	fmt.Println("Name: ", req.CmdConf.Name)
+	fmt.Println("Url: ", req.CmdConf.Url)
+	fmt.Println("Host: ", req.CmdConf.Host)
+	fmt.Println("Concurrence: ", req.CmdConf.Concurrence)
+
+	ts_conf := Conf{url: req.CmdConf.Url, host: req.CmdConf.Host, concurrence: req.CmdConf.Concurrence}
+	if ctrl.services[req.CmdConf.Name] == nil {
+		go StartApp(req.CmdConf.Name, ctrl, ts_conf)
+	}
+	data := make(map[string]string)
+	data["url"] = "http://" + GetIP().String() + ":8091" + APIV1
+
+	WriteSuccess(&w, &data, nil)
+}
+
+func CmdStop()    {}
+func CmdRestart() {}
 
 func (ts *Tsunami) SetConf(c Conf) {
 	ts.conf = c
 }
 
-func main() {
-
-	api := &api.App{}
+func StartApp(service string, ctrl *TSControl, conf Conf) {
 
 	// Read user parameter
-	conf := ReadConf()
+	// conf := ReadConf()
 
 	// Initialize Tsunami
 	app := Tsunami{conf: conf, duration: 3600, refresh: 2, enableReport: true}
 	app.Init(100000)
-
+	ctrl.services[service] = &app
 	app.Run()
 
 	shell := Shell{Done: &app.done, enableReport: &app.enableReport}
@@ -302,13 +331,27 @@ func main() {
 	go app.Monitoring(time.Duration(app.refresh) * time.Second)
 
 	// Start Api Service
+	api := &api.App{}
 	api.Init("8091")
 	api.AddApi(APIV1+"/metrics", app.GetMetrics)
-	api.AddApi(APIV1+"/cmd", app.Cmd)
 	api.Run()
 
 	c := time.Tick(time.Duration(app.duration) * time.Second)
 	<-c
 
 	app.Stop()
+
+}
+
+func main() {
+
+	// TS control
+	ctrl := TSControl{services: make(map[string]*Tsunami)}
+
+	// Start deamon service
+	api := &api.App{}
+	api.Init("8090")
+	api.AddApi(APIV1_ADMIN+"/start", ctrl.CmdStart)
+	api.Run()
+
 }
