@@ -199,7 +199,7 @@ func (ts *Tsunami) Reload(conf map[string]string) {
 func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 
 	defer r.Body.Close()
-
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var avg float64
 	var numRes, numErr int
 	data := make(map[string]string)
