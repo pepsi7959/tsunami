@@ -54,6 +54,9 @@ type Tsunami struct {
 
 	// Report
 	enableReport bool
+
+	// api service
+	apiServer *api.App
 }
 
 // Init
@@ -308,6 +311,7 @@ func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 	t := ctrl.services[req.CmdConf.Name]
 	if t != nil {
 		t.Stop()
+		t.apiServer.Stop()
 		delete(ctrl.services, req.CmdConf.Name)
 	} else {
 		WriteSuccess(&w, nil, &Error{Code: RESULT_NOT_FOUND, Message: "service not found"})
@@ -347,10 +351,10 @@ func StartApp(service string, ctrl *TSControl, conf Conf) {
 	go app.Monitoring(time.Duration(app.refresh) * time.Second)
 
 	// Start Api Service
-	api := &api.App{}
-	api.Init("8091")
-	api.AddApi(APIV1+"/metrics", app.GetMetrics)
-	api.Run()
+	app.apiServer = &api.App{}
+	app.apiServer.Init("8091")
+	app.apiServer.AddApi(APIV1+"/metrics", app.GetMetrics)
+	app.apiServer.Run()
 
 	c := time.Tick(time.Duration(app.duration) * time.Second)
 	<-c
