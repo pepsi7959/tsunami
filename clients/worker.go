@@ -25,7 +25,7 @@ type Stat struct {
 type Worker struct {
 	conf   Conf
 	jobs   *chan Job
-	Done   chan bool
+	Done   *bool
 	client *fasthttp.HostClient
 	stat   Stat
 }
@@ -85,22 +85,16 @@ func (w *Worker) UpdateStat(resTime int64) {
 
 func (w *Worker) Run() {
 	fmt.Println("Run Worker...")
-	for {
-		//select {
-		//case <-*w.jobs:
-		w.do()
-		//case <-w.Done:
-		//		fmt.Println("quit worker")
-		//	}
+	for *w.Done != true {
+		select {
+		case <-*w.jobs:
+			w.do()
+		}
 	}
+	fmt.Println("quit worker")
 }
 
 func (w *Worker) do() {
-	//fmt.Printf("Do job: Calling %s\n", w.url())
-	//tr := &http.Transport{}
-	//defer tr.CloseIdleConnections()
-	//clnt := &http.Client{Transport: tr}
-	//clnt := &http.Client{Transport: tr}
 	req := fasthttp.AcquireRequest()
 	req.SetRequestURI(w.url())
 	resp := fasthttp.AcquireResponse()

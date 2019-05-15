@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	RESULT_SUCCESS = 20000
+	RESULT_NOT_FOUND = 40400
+	RESULT_SUCCESS   = 20000
 )
 
 // google style guide
@@ -29,7 +30,7 @@ type Response struct {
 	Error Error `json:"error"`
 }
 
-func WriteSuccess(w *http.ResponseWriter, data *map[string]string, err *HttpError) {
+func WriteSuccess(w *http.ResponseWriter, data *map[string]string, err *Error) {
 
 	(*w).Header().Set("Content-Type", "application/json")
 
