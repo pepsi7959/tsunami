@@ -41,5 +41,11 @@ func (app *App) setRoute() {
 }
 
 func (app *App) Run() {
+	fmt.Println("Listening: ", app.Server.Addr)
 	app.Server.ListenAndServe()
+}
+
+func (app *App) Stop() {
+	fmt.Println("stop server: ", app.Server.Addr)
+	app.Server.Close()
 }

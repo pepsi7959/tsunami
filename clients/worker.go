@@ -25,7 +25,7 @@ type Stat struct {
 type Worker struct {
 	conf   Conf
 	jobs   *chan Job
-	Done   chan bool
+	Done   *bool
 	client *fasthttp.HostClient
 	stat   Stat
 }
@@ -85,24 +85,28 @@ func (w *Worker) UpdateStat(resTime int64) {
 
 func (w *Worker) Run() {
 	fmt.Println("Run Worker...")
-	for {
-		//select {
-		//case <-*w.jobs:
-		w.do()
-		//case <-w.Done:
-		//		fmt.Println("quit worker")
-		//	}
+	for *w.Done != true {
+		select {
+		case <-*w.jobs:
+			w.do()
+		}
 	}
+	fmt.Println("quit worker")
 }
 
 func (w *Worker) do() {
-	//fmt.Printf("Do job: Calling %s\n", w.url())
-	//tr := &http.Transport{}
-	//defer tr.CloseIdleConnections()
-	//clnt := &http.Client{Transport: tr}
-	//clnt := &http.Client{Transport: tr}
 	req := fasthttp.AcquireRequest()
+
+	h := &req.Header
+
+	h.SetMethod(w.conf.method)
+	for k, v := range w.conf.headers {
+		h.Add(k, v)
+	}
+
 	req.SetRequestURI(w.url())
+	req.SetBodyString(w.conf.body)
+
 	resp := fasthttp.AcquireResponse()
 	start := time.Now()
 	err := w.client.Do(req, resp)
@@ -110,8 +114,11 @@ func (w *Worker) do() {
 		w.UpdateErr()
 		fmt.Println(err)
 	} else {
-		//code = resp.StatusCode()
-		//fmt.Println(string(resp.Body()))
+		code := resp.StatusCode()
+		if code != 200 {
+			w.UpdateErr()
+			fmt.Println(string(resp.Body()))
+		}
 	}
 
 	w.UpdateStat(time.Since(start).Nanoseconds())
