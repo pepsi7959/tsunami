@@ -117,7 +117,7 @@ func (w *Worker) do() {
 		code := resp.StatusCode()
 		if code != 200 {
 			w.UpdateErr()
-			fmt.Println(string(resp.Body()))
+			fmt.Println("code: ", code, "Error: ", string(resp.Body()))
 		}
 	}
 
