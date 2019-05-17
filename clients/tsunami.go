@@ -284,8 +284,20 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Url: ", req.CmdConf.Url)
 	fmt.Println("Host: ", req.CmdConf.Host)
 	fmt.Println("Concurrence: ", req.CmdConf.Concurrence)
+	fmt.Println("Method: ", req.CmdConf.Method)
+	fmt.Println("Headers ", req.CmdConf.Headers)
+	fmt.Println("Body: ", req.CmdConf.Body)
 
-	ts_conf := Conf{url: req.CmdConf.Url, host: req.CmdConf.Host, concurrence: req.CmdConf.Concurrence}
+	if req.CmdConf.Method == "" {
+		req.CmdConf.Method = "GET"
+	}
+
+	ts_conf := Conf{url: req.CmdConf.Url,
+		host:        req.CmdConf.Host,
+		method:      req.CmdConf.Method,
+		headers:     req.CmdConf.Headers,
+		body:        req.CmdConf.Body,
+		concurrence: req.CmdConf.Concurrence}
 	if ctrl.services[req.CmdConf.Name] == nil {
 		go StartApp(req.CmdConf.Name, ctrl, ts_conf)
 	}

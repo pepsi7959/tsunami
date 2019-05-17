@@ -5,10 +5,13 @@ package main
 
 // Conf structure
 type CmdConf struct {
-	Name        string `json:"name"`
-	Url         string `json:"url"`
-	Concurrence int    `json:"concurrence"`
-	Host        string `json:"host"`
+	Name        string            `json:"name"`
+	Url         string            `json:"url"`
+	Method      string            `json:"method"`
+	Headers     map[string]string `json:"headers"`
+	Body        string            `json:"body"`
+	Concurrence int               `json:"concurrence"`
+	Host        string            `json:"host"`
 }
 
 // Requst structure
