@@ -55,7 +55,13 @@ It's load generator platform designed to test performance. In case of tuning sys
 
     ```bash
     apt install make
-    apt install golang-go
+    
+    cd /tmp
+    wget https://dl.google.com/go/go1.11.linux-amd64.tar.gz
+    
+    sudo tar -xvf go1.11.linux-amd64.tar.gz
+    sudo mv go /usr/local
+    
     ```
   - external library
     
