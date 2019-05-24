@@ -61,6 +61,13 @@ It's load generator platform designed to test performance. In case of tuning sys
     
     sudo tar -xvf go1.11.linux-amd64.tar.gz
     sudo mv go /usr/local
+    ```
+  - Setting Environment
+  
+    ```
+    export GOROOT=/usr/local/go
+    export GOPATH=$HOME/go
+    export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
     
     ```
   - external library
