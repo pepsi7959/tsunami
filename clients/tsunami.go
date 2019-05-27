@@ -232,7 +232,7 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
 
 	defer r.Body.Close()
-	var avg float64
+	var avg, min, max float64
 	var numRes, numErr int
 	data := make(map[string]string)
 
@@ -240,6 +240,14 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		numRes += w.GetNumRes()
 		numErr += w.GetNumErr()
 		avg += w.GetAvgRes()
+
+		if w.GetMaxRes() > max {
+			max = w.GetMaxRes()
+		}
+
+		if min == 0.0 || min > w.GetMinRes() {
+			min = w.GetMinRes()
+		}
 	}
 
 	workers := len(ts.workers)
@@ -248,6 +256,8 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	data["workers_count"] = fmt.Sprintf("%d", workers)
 	data["errors_count"] = fmt.Sprintf("%d", numErr)
 	data["avg"] = fmt.Sprintf("%f", avg)
+	data["min"] = fmt.Sprintf("%f", min)
+	data["max"] = fmt.Sprintf("%f", max)
 	data["elaped_time"] = fmt.Sprintf("%f", time.Since(ts.start).Seconds())
 	data["requests_count"] = fmt.Sprintf("%f", float64(numRes))
 	data["rps"] = fmt.Sprintf("%f", float64(numRes)/time.Since(ts.start).Seconds())
