@@ -7,17 +7,20 @@ import (
 	"net/http"
 )
 
-type HttpError struct {
+// HTTPError http error structure
+type HTTPError struct {
 	Code    int
 	Message string
 }
 
-type HttpResponse struct {
+// HTTPResponse http response
+type HTTPResponse struct {
 	data  map[string]interface{}
 	error map[string]interface{}
 }
 
-func CreateJsonRes(w *http.ResponseWriter, data *map[string]string, err *HttpError) {
+//CreateJSONRes creat response as json format
+func CreateJSONRes(w *http.ResponseWriter, data *map[string]string, err *HTTPError) {
 	if err != nil {
 		fmt.Fprintf(*w, "{\"error\": {\"code\": %v,\"message\": \"%v\"}", err.Code, err.Message)
 	} else {
@@ -26,7 +29,7 @@ func CreateJsonRes(w *http.ResponseWriter, data *map[string]string, err *HttpErr
 			fmt.Fprintf(&b, "\"%s\":\"%s\",", k, v)
 		}
 		resp := Response{Data: data}
-		j_resp, _ := json.Marshal(&resp)
-		fmt.Fprintf(*w, string(j_resp))
+		JSONResp, _ := json.Marshal(&resp)
+		fmt.Fprintf(*w, string(JSONResp))
 	}
 }

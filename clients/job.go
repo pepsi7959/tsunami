@@ -1,6 +1,5 @@
 package main
 
 // Job detial
-type Job struct{
-
+type Job struct {
 }

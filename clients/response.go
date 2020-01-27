@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	RESULT_NOT_FOUND = 40400
-	RESULT_SUCCESS   = 20000
+	//ResultNotFound not found error code
+	ResultNotFound = 40400
+	//ResultSuccess success code
+	ResultSuccess = 20000
 )
 
 // google style guide
@@ -23,24 +25,25 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// Reponse structure
+//Response structure
 type Response struct {
 	Code  int   `json:"code"`
 	Data  Data  `json:"data"`
 	Error Error `json:"error"`
 }
 
+//WriteSuccess send success response
 func WriteSuccess(w *http.ResponseWriter, data *map[string]string, err *Error) {
 
 	(*w).Header().Set("Content-Type", "application/json")
 
 	if err != nil {
 		resp := Response{Error: Error{Message: err.Message}}
-		j_resp, _ := json.Marshal(&resp)
-		fmt.Fprintf(*w, string(j_resp))
+		JSONResp, _ := json.Marshal(&resp)
+		fmt.Fprintf(*w, string(JSONResp))
 	} else {
-		resp := Response{Code: RESULT_SUCCESS, Data: data}
-		j_resp, _ := json.Marshal(&resp)
-		fmt.Fprintf(*w, string(j_resp))
+		resp := Response{Code: ResultSuccess, Data: data}
+		JSONResp, _ := json.Marshal(&resp)
+		fmt.Fprintf(*w, string(JSONResp))
 	}
 }
