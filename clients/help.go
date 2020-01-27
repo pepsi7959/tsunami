@@ -6,11 +6,13 @@ import (
 	"os"
 )
 
+// Usage information for using app
 func Usage() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 	flag.PrintDefaults()
 }
 
+// ReadConf read configruation
 func ReadConf() Conf {
 	var url = flag.String("url", "", "URL : http[s]://<hostname>[:port]/<uri>")
 	var host = flag.String("host", "", "hostname ex. example.com")

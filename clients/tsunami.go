@@ -16,20 +16,21 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Route URL
-var APIV1 = "/api/v1"
-var APIV1_ADMIN = "/api/v1/admin"
+// APIVersion is prefix url of api version
+var APIVersion = "/api/v1"
 
-// Http configuration
-var AllowOrigin string = "*"
+// APIAdmin is prefix url of admin api
+const APIAdmin = "/api/v1/admin"
 
-// TSControl
-// Used for storing tsunami service
+// AllowOrigin is a header to allow cross domain
+var AllowOrigin = "*"
+
+// TSControl used for storing tsunami service
 type TSControl struct {
 	services map[string]*Tsunami
 }
 
-// Tsunami
+// Tsunami used to keep important infomation
 type Tsunami struct {
 	conf Conf
 
@@ -37,9 +38,9 @@ type Tsunami struct {
 	logger *log.Logger
 
 	// max queues to storing request
-	max_queues int
-	jobs       chan Job
-	workers    []Worker
+	maxQueues int
+	jobs      chan Job
+	workers   []Worker
 
 	done bool
 
@@ -59,14 +60,13 @@ type Tsunami struct {
 	apiServer *api.App
 }
 
-// Init
-// initial parameters, logging and workers
-func (ts *Tsunami) Init(max_queues int) {
-	ts.max_queues = max_queues
+// Init is used to initiaize parameters, logging and workers
+func (ts *Tsunami) Init(maxQueues int) {
+	ts.maxQueues = maxQueues
 	fmt.Println("initialize Tsunami")
 	fmt.Println("initialize logger")
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
-	ts.jobs = make(chan Job, ts.max_queues)
+	ts.jobs = make(chan Job, ts.maxQueues)
 
 	c := &fasthttp.HostClient{Addr: ts.conf.host, MaxConns: ts.conf.maxConns, ReadTimeout: time.Second * 30, WriteTimeout: time.Second * 30, Dial: func(addr string) (net.Conn, error) { return fasthttp.DialTimeout(addr, time.Second*60) }}
 	for i := 0; i < ts.conf.concurrence; i++ {
@@ -75,36 +75,32 @@ func (ts *Tsunami) Init(max_queues int) {
 	}
 }
 
-// AddWorker
-// create a new worker then storing to the Tsunami
+// AddWorker used for creating a new worker then storing to the Tsunami
 func (ts *Tsunami) AddWorker(w Worker) {
 	w.jobs = &ts.jobs
 	ts.workers = append(ts.workers, w)
 }
 
-// Run
-// Invoke all workers
+// Run invoke all workers
 func (ts *Tsunami) Run() {
 	fmt.Println("Start worker")
 	ts.start = time.Now()
 	ts.done = false
-	for i, _ := range ts.workers {
+	for i := range ts.workers {
 		go ts.workers[i].Run()
 	}
 }
 
-// Stop
-// Stop all workers
+// Stop to stop all workers
 func (ts *Tsunami) Stop() {
 	fmt.Println("Stoping worker")
 	ts.done = true
-	for i, _ := range ts.workers {
+	for i := range ts.workers {
 		fmt.Printf("Stoping worker[%d]\n", i)
 	}
 }
 
-// Genload
-// Assign jobs to workers
+// GenLoad assigning the jobs to workers
 func (ts *Tsunami) GenLoad() {
 	ts.done = false
 	for ts.done != true {
@@ -112,19 +108,24 @@ func (ts *Tsunami) GenLoad() {
 	}
 }
 
-// Monitoring
-// provide all metrics
+// Monitoring provide all metrics
 func (ts *Tsunami) Monitoring(d time.Duration) {
 	for ts.done != true {
 		c := time.Tick(d)
 		<-c
 
-		var numRes int = 0
-		var numErr int = 0
-		var avg float64 = 0.0
-		var max float64 = 0.0
-		var min float64 = 9999.99
-		var workers int = len(ts.workers)
+		var numRes = 0
+		var numErr = 0
+		var avg float64
+		var max float64
+		var min float64
+		var workers int
+
+		avg = 0.0
+		max = 0.0
+		min = 9999.99
+
+		workers = len(ts.workers)
 
 		if ts.enableReport == true {
 			for _, w := range ts.workers {
@@ -158,32 +159,28 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 
 // List of controlling command
 
-// Quit
-// Quit the process
+// Quit quiting the process
 func (ts *Tsunami) Quit(p string) error {
 	fmt.Println("Quit!!!")
 	os.Exit(0)
 	return nil
 }
 
-// SetRefresh
-// Rate to refresh metrics
+// SetRefresh setting rate to refresh metrics
 func (ts *Tsunami) SetRefresh(p string) error {
 	fmt.Println("Set Refresh rate: ", p)
 	ts.Reload(map[string]string{"refresh": p})
 	return nil
 }
 
-// SetEnableReport
-// Enable or disable to dispaly metrics
+// SetEnableReport enable or disable to dispaly metrics
 func (ts *Tsunami) SetEnableReport(p string) error {
 	fmt.Println("Set enableReport: ", p)
 	ts.Reload(map[string]string{"enableReport": p})
 	return nil
 }
 
-// ShowHelp
-// Show all available commands
+// ShowHelp show all available commands
 func (ts *Tsunami) ShowHelp(p string) error {
 	fmt.Println("\033[H\033[2J")
 	fmt.Println("-------------------------------")
@@ -198,8 +195,7 @@ func (ts *Tsunami) ShowHelp(p string) error {
 	return nil
 }
 
-// AddNewWorker
-// Add and start a new worker
+// AddNewWorker add and start a new worker
 func (ts *Tsunami) AddNewWorker(p string) error {
 	w := Worker{Done: &ts.done, conf: ts.conf, jobs: &ts.jobs}
 	ts.workers = append(ts.workers, w)
@@ -207,8 +203,7 @@ func (ts *Tsunami) AddNewWorker(p string) error {
 	return nil
 }
 
-// Reload
-// Reload configuration
+// Reload reload the configuration
 func (ts *Tsunami) Reload(conf map[string]string) {
 	for k, v := range conf {
 		switch k {
@@ -219,13 +214,12 @@ func (ts *Tsunami) Reload(conf map[string]string) {
 		case "enableReport":
 			ts.enableReport, _ = strconv.ParseBool(v)
 		default:
-			fmt.Printf("Reload: unknow [%s][%s] \n")
+			fmt.Printf("Reload: unknow [%s][%s] \n", k, v)
 		}
 	}
 }
 
-// GetMetrics
-// Get all metrics including workers, errors,
+// GetMetrics getting all metrics including workers, errors,
 // avg(average), elaped time, requests, rps(request per second)
 func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 
@@ -266,8 +260,7 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-// Decoder
-
+// Decoder decode the response
 func (ctrl *TSControl) Decoder(w http.ResponseWriter, r *http.Request, v interface{}) {
 	defer r.Body.Close()
 
@@ -281,6 +274,7 @@ func (ctrl *TSControl) Decoder(w http.ResponseWriter, r *http.Request, v interfa
 	}
 }
 
+//CmdStart command to start worker
 func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 
 	var req Request
@@ -291,7 +285,7 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 	ctrl.Decoder(w, r, &req)
 
 	fmt.Println("Name: ", req.CmdConf.Name)
-	fmt.Println("Url: ", req.CmdConf.Url)
+	fmt.Println("Url: ", req.CmdConf.URL)
 	fmt.Println("Host: ", req.CmdConf.Host)
 	fmt.Println("Concurrence: ", req.CmdConf.Concurrence)
 	fmt.Println("Method: ", req.CmdConf.Method)
@@ -302,22 +296,23 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 		req.CmdConf.Method = "GET"
 	}
 
-	ts_conf := Conf{url: req.CmdConf.Url,
+	tsConf := Conf{url: req.CmdConf.URL,
 		host:        req.CmdConf.Host,
 		method:      req.CmdConf.Method,
 		headers:     req.CmdConf.Headers,
 		body:        req.CmdConf.Body,
 		concurrence: req.CmdConf.Concurrence}
 	if ctrl.services[req.CmdConf.Name] == nil {
-		go StartApp(req.CmdConf.Name, ctrl, ts_conf)
+		go StartApp(req.CmdConf.Name, ctrl, tsConf)
 	}
 	data := make(map[string]string)
-	data["url"] = "http://" + GetIP().String() + ":8091" + APIV1
+	data["url"] = "http://" + GetIP().String() + ":8091" + APIVersion
 	data["name"] = req.CmdConf.Name
 
 	WriteSuccess(&w, &data, nil)
 }
 
+// CmdStop command to stop running workers
 func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 
 	var req Request
@@ -336,17 +331,21 @@ func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 		t.apiServer.Stop()
 		delete(ctrl.services, req.CmdConf.Name)
 	} else {
-		WriteSuccess(&w, nil, &Error{Code: RESULT_NOT_FOUND, Message: "service not found"})
+		WriteSuccess(&w, nil, &Error{Code: ResultNotFound, Message: "service not found"})
 		return
 	}
 	WriteSuccess(&w, nil, nil)
 }
+
+// CmdRestart stop and start workers
 func CmdRestart() {}
 
+// SetConf setting configuraiton for Tsunami
 func (ts *Tsunami) SetConf(c Conf) {
 	ts.conf = c
 }
 
+//StartApp start Tsunami Application
 func StartApp(service string, ctrl *TSControl, conf Conf) {
 
 	// Read user parameter
@@ -375,7 +374,7 @@ func StartApp(service string, ctrl *TSControl, conf Conf) {
 	// Start Api Service
 	app.apiServer = &api.App{}
 	app.apiServer.Init("8091")
-	app.apiServer.AddApi(APIV1+"/metrics", app.GetMetrics)
+	app.apiServer.AddApi(APIVersion+"/metrics", app.GetMetrics)
 	app.apiServer.Run()
 
 	c := time.Tick(time.Duration(app.duration) * time.Second)
@@ -387,14 +386,13 @@ func StartApp(service string, ctrl *TSControl, conf Conf) {
 
 func main() {
 
-	// TS control
 	ctrl := TSControl{services: make(map[string]*Tsunami)}
 
 	// Start deamon service
 	api := &api.App{}
 	api.Init("8090")
-	api.AddApi(APIV1_ADMIN+"/start", ctrl.CmdStart)
-	api.AddApi(APIV1_ADMIN+"/stop", ctrl.CmdStop)
+	api.AddApi(APIAdmin+"/start", ctrl.CmdStart)
+	api.AddApi(APIAdmin+"/stop", ctrl.CmdStop)
 	api.Run()
 
 }

@@ -1,12 +1,12 @@
 package main
 
-/* Configuration */
+//Conf configuration structure
 type Conf struct {
 	url         string
-	host        string "localhost"
-	port        string "80"
-	path        string "/"
-	method      string "GET"
+	host        string
+	port        string
+	path        string
+	method      string
 	headers     map[string]string
 	body        string
 	concurrence int

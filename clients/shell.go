@@ -7,10 +7,12 @@ import (
 	"strings"
 )
 
+//Cmd command structure
 type Cmd struct {
 	Func func(string) error
 }
 
+//Shell interactive interface
 type Shell struct {
 	CmdList      map[string]Cmd
 	Done         *bool
@@ -20,15 +22,18 @@ type Shell struct {
 	enableMenu bool
 }
 
+//Init initilize interactive shell
 func (s *Shell) Init() {
 	s.CmdList = make(map[string]Cmd)
 	s.enableMenu = false
 }
 
+//AddCmd set up command
 func (s *Shell) AddCmd(cn string, f func(string) error) {
 	s.CmdList[cn] = Cmd{Func: f}
 }
 
+//Run invoke shell process
 func (s *Shell) Run() {
 	var oldEnableReport bool
 
