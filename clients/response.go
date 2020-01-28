@@ -11,6 +11,8 @@ const (
 	ResultNotFound = 40400
 	//ResultSuccess success code
 	ResultSuccess = 20000
+	//ResultInvalidCMD invalid command
+	ResultInvalidCMD = 40001
 )
 
 // google style guide
