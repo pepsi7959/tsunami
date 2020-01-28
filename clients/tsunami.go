@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -246,7 +247,7 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 
 	workers := len(ts.workers)
 	avg = avg / float64(workers)
-
+	data["name"] = ts.conf.name
 	data["workers_count"] = fmt.Sprintf("%d", workers)
 	data["errors_count"] = fmt.Sprintf("%d", numErr)
 	data["avg"] = fmt.Sprintf("%f", avg)
@@ -260,8 +261,8 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-// Decoder decode the response
-func (ctrl *TSControl) Decoder(w http.ResponseWriter, r *http.Request, v interface{}) {
+// Decoder decode request to json structure
+func (ctrl *TSControl) Decoder(w http.ResponseWriter, r *http.Request, v interface{}) error {
 	defer r.Body.Close()
 
 	d := json.NewDecoder(r.Body)
@@ -271,7 +272,9 @@ func (ctrl *TSControl) Decoder(w http.ResponseWriter, r *http.Request, v interfa
 		//do nothing
 	} else if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return errors.New("JSON decode error: " + err.Error())
 	}
+	return nil
 }
 
 //CmdStart command to start worker
@@ -281,9 +284,14 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
 
-	//decode request
-	ctrl.Decoder(w, r, &req)
+	err := ctrl.Decoder(w, r, &req)
 
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println("cmd: ", req.Cmd)
 	fmt.Println("Name: ", req.CmdConf.Name)
 	fmt.Println("Url: ", req.CmdConf.URL)
 	fmt.Println("Host: ", req.CmdConf.Host)
@@ -296,15 +304,20 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 		req.CmdConf.Method = "GET"
 	}
 
-	tsConf := Conf{url: req.CmdConf.URL,
+	tsConf := Conf{
+		name:        req.CmdConf.Name,
+		url:         req.CmdConf.URL,
 		host:        req.CmdConf.Host,
 		method:      req.CmdConf.Method,
 		headers:     req.CmdConf.Headers,
 		body:        req.CmdConf.Body,
-		concurrence: req.CmdConf.Concurrence}
+		concurrence: req.CmdConf.Concurrence,
+	}
+
 	if ctrl.services[req.CmdConf.Name] == nil {
 		go StartApp(req.CmdConf.Name, ctrl, tsConf)
 	}
+
 	data := make(map[string]string)
 	data["url"] = "http://" + GetIP().String() + ":8091" + APIVersion
 	data["name"] = req.CmdConf.Name
@@ -337,6 +350,32 @@ func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 	WriteSuccess(&w, nil, nil)
 }
 
+//CmdMetrics get all information of worker
+func (ctrl *TSControl) CmdMetrics(w http.ResponseWriter, r *http.Request) {
+	var req Request
+
+	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+
+	//decode request
+	ctrl.Decoder(w, r, &req)
+
+	fmt.Println("Cmd: ", req.Cmd)
+	fmt.Println("Name: ", req.CmdConf.Name)
+
+	if req.Cmd != "metrics" {
+		WriteSuccess(&w, nil, &Error{Code: ResultInvalidCMD, Message: "invalid command"})
+		return
+	}
+
+	app := ctrl.services[req.CmdConf.Name]
+
+	if app == nil {
+		WriteSuccess(&w, nil, &Error{Code: ResultNotFound, Message: "service not found"})
+		return
+	}
+	app.GetMetrics(w, r)
+}
+
 // CmdRestart stop and start workers
 func CmdRestart() {}
 
@@ -353,6 +392,8 @@ func StartApp(service string, ctrl *TSControl, conf Conf) {
 
 	// Initialize Tsunami
 	app := Tsunami{done: false, conf: conf, duration: 3600, refresh: 2, enableReport: true}
+
+	// max queues is 1000000
 	app.Init(100000)
 	ctrl.services[service] = &app
 	app.Run()
@@ -393,6 +434,7 @@ func main() {
 	api.Init("8090")
 	api.AddApi(APIAdmin+"/start", ctrl.CmdStart)
 	api.AddApi(APIAdmin+"/stop", ctrl.CmdStop)
+	api.AddApi(APIAdmin+"/metrics", ctrl.CmdMetrics)
 	api.Run()
 
 }

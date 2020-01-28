@@ -2,6 +2,7 @@ package main
 
 //Conf configuration structure
 type Conf struct {
+	name        string
 	url         string
 	host        string
 	port        string
