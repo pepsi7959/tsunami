@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	tshttp "github.com/tsunami/libs"
@@ -8,6 +9,15 @@ import (
 
 // Start begin calling worker to generate load
 func (oc *Oceans) Start(w http.ResponseWriter, r *http.Request) {
+
+	var req tshttp.Request
+	err := tshttp.Decoder(w, r, req)
+
+	if err != nil {
+		fmt.Printf(err.Error())
+		return
+	}
+
 	tshttp.WriteSuccess(&w, nil, nil)
 }
 

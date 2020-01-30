@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"time"
 
-	tshttp "github.com/tsunami/libs/api"
+	tshttp "github.com/tsunami/libs"
 	"github.com/valyala/fasthttp"
 )
 
@@ -33,7 +33,7 @@ type TSControl struct {
 
 // Tsunami used to keep important infomation
 type Tsunami struct {
-	conf Conf
+	conf tshttp.Conf
 
 	buf    bytes.Buffer
 	logger *log.Logger
@@ -58,7 +58,7 @@ type Tsunami struct {
 	enableReport bool
 
 	// api service
-	apiServer *api.App
+	apiServer *tshttp.App
 }
 
 // Init is used to initiaize parameters, logging and workers
@@ -69,8 +69,12 @@ func (ts *Tsunami) Init(maxQueues int) {
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
 	ts.jobs = make(chan Job, ts.maxQueues)
 
-	c := &fasthttp.HostClient{Addr: ts.conf.host, MaxConns: ts.conf.maxConns, ReadTimeout: time.Second * 30, WriteTimeout: time.Second * 30, Dial: func(addr string) (net.Conn, error) { return fasthttp.DialTimeout(addr, time.Second*60) }}
-	for i := 0; i < ts.conf.concurrence; i++ {
+	c := &fasthttp.HostClient{Addr: ts.conf.Host,
+		MaxConns:     ts.conf.MaxConns,
+		ReadTimeout:  time.Second * 30,
+		WriteTimeout: time.Second * 30,
+		Dial:         func(addr string) (net.Conn, error) { return fasthttp.DialTimeout(addr, time.Second*60) }}
+	for i := 0; i < ts.conf.Concurrence; i++ {
 		worker := Worker{Done: &ts.done, conf: ts.conf, client: c}
 		ts.AddWorker(worker)
 	}
@@ -247,7 +251,7 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 
 	workers := len(ts.workers)
 	avg = avg / float64(workers)
-	data["name"] = ts.conf.name
+	data["name"] = ts.conf.Name
 	data["workers_count"] = fmt.Sprintf("%d", workers)
 	data["errors_count"] = fmt.Sprintf("%d", numErr)
 	data["avg"] = fmt.Sprintf("%f", avg)
@@ -280,7 +284,7 @@ func (ctrl *TSControl) Decoder(w http.ResponseWriter, r *http.Request, v interfa
 //CmdStart command to start worker
 func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 
-	var req Request
+	var req tshttp.Request
 
 	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
 
@@ -304,14 +308,14 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 		req.CmdConf.Method = "GET"
 	}
 
-	tsConf := Conf{
-		name:        req.CmdConf.Name,
-		url:         req.CmdConf.URL,
-		host:        req.CmdConf.Host,
-		method:      req.CmdConf.Method,
-		headers:     req.CmdConf.Headers,
-		body:        req.CmdConf.Body,
-		concurrence: req.CmdConf.Concurrence,
+	tsConf := tshttp.Conf{
+		Name:        req.CmdConf.Name,
+		URL:         req.CmdConf.URL,
+		Host:        req.CmdConf.Host,
+		Method:      req.CmdConf.Method,
+		Headers:     req.CmdConf.Headers,
+		Body:        req.CmdConf.Body,
+		Concurrence: req.CmdConf.Concurrence,
 	}
 
 	if ctrl.services[req.CmdConf.Name] == nil {
@@ -328,7 +332,7 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 // CmdStop command to stop running workers
 func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 
-	var req Request
+	var req tshttp.Request
 
 	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
 
@@ -344,7 +348,7 @@ func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 		t.apiServer.Stop()
 		delete(ctrl.services, req.CmdConf.Name)
 	} else {
-		tshttp.WriteSuccess(&w, nil, &Error{Code: ResultNotFound, Message: "service not found"})
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultNotFound, Message: "service not found"})
 		return
 	}
 	tshttp.WriteSuccess(&w, nil, nil)
@@ -352,7 +356,7 @@ func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 
 //CmdMetrics get all information of worker
 func (ctrl *TSControl) CmdMetrics(w http.ResponseWriter, r *http.Request) {
-	var req Request
+	var req tshttp.Request
 
 	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
 
@@ -363,14 +367,14 @@ func (ctrl *TSControl) CmdMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Name: ", req.CmdConf.Name)
 
 	if req.Cmd != "metrics" {
-		tshttp.WriteSuccess(&w, nil, &Error{Code: ResultInvalidCMD, Message: "invalid command"})
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultInvalidCMD, Message: "invalid command"})
 		return
 	}
 
 	app := ctrl.services[req.CmdConf.Name]
 
 	if app == nil {
-		tshttp.WriteSuccess(&w, nil, &Error{Code: ResultNotFound, Message: "service not found"})
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultNotFound, Message: "service not found"})
 		return
 	}
 	app.GetMetrics(w, r)
@@ -380,12 +384,12 @@ func (ctrl *TSControl) CmdMetrics(w http.ResponseWriter, r *http.Request) {
 func CmdRestart() {}
 
 // SetConf setting configuraiton for Tsunami
-func (ts *Tsunami) SetConf(c Conf) {
+func (ts *Tsunami) SetConf(c tshttp.Conf) {
 	ts.conf = c
 }
 
 //StartApp start Tsunami Application
-func StartApp(service string, ctrl *TSControl, conf Conf) {
+func StartApp(service string, ctrl *TSControl, conf tshttp.Conf) {
 
 	// Read user parameter
 	// conf := ReadConf()
@@ -413,9 +417,9 @@ func StartApp(service string, ctrl *TSControl, conf Conf) {
 	go app.Monitoring(time.Duration(app.refresh) * time.Second)
 
 	// Start Api Service
-	app.apiServer = &api.App{}
+	app.apiServer = &tshttp.App{}
 	app.apiServer.Init("8091")
-	app.apiServer.AddApi(APIVersion+"/metrics", app.GetMetrics)
+	app.apiServer.AddAPI(APIVersion+"/metrics", app.GetMetrics)
 	app.apiServer.Run()
 
 	c := time.Tick(time.Duration(app.duration) * time.Second)
@@ -430,11 +434,11 @@ func main() {
 	ctrl := TSControl{services: make(map[string]*Tsunami)}
 
 	// Start deamon service
-	api := &api.App{}
+	api := &tshttp.App{}
 	api.Init("8090")
-	api.AddApi(APIAdmin+"/start", ctrl.CmdStart)
-	api.AddApi(APIAdmin+"/stop", ctrl.CmdStop)
-	api.AddApi(APIAdmin+"/metrics", ctrl.CmdMetrics)
+	api.AddAPI(APIAdmin+"/start", ctrl.CmdStart)
+	api.AddAPI(APIAdmin+"/stop", ctrl.CmdStop)
+	api.AddAPI(APIAdmin+"/metrics", ctrl.CmdMetrics)
 	api.Run()
 
 }

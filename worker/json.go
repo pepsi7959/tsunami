@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	tshttp "github.com/tsunami/libs"
 )
 
 // HTTPError http error structure
@@ -28,7 +30,7 @@ func CreateJSONRes(w *http.ResponseWriter, data *map[string]string, err *HTTPErr
 		for k, v := range *data {
 			fmt.Fprintf(&b, "\"%s\":\"%s\",", k, v)
 		}
-		resp := Response{Data: data}
+		resp := tshttp.Response{Data: data}
 		JSONResp, _ := json.Marshal(&resp)
 		fmt.Fprintf(*w, string(JSONResp))
 	}

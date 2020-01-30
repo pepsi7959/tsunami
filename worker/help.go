@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	tshttp "github.com/tsunami/libs"
 )
 
 // Usage information for using app
@@ -13,7 +15,7 @@ func Usage() {
 }
 
 // ReadConf read configruation
-func ReadConf() Conf {
+func ReadConf() tshttp.Conf {
 	var url = flag.String("url", "", "URL : http[s]://<hostname>[:port]/<uri>")
 	var host = flag.String("host", "", "hostname ex. example.com")
 	var port = flag.String("port", "80", "listen port")
@@ -29,5 +31,11 @@ func ReadConf() Conf {
 		os.Exit(1)
 	}
 
-	return Conf{url: *url, host: *host, port: *port, path: *path, concurrence: *concurrence, maxQueues: *maxQueues, maxConns: *maxConns}
+	return tshttp.Conf{URL: *url,
+		Host:        *host,
+		Port:        *port,
+		Path:        *path,
+		Concurrence: *concurrence,
+		MaxQueues:   *maxQueues,
+		MaxConns:    *maxConns}
 }

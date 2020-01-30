@@ -5,18 +5,22 @@ import tshttp "github.com/tsunami/libs"
 //APIVersion version of APIs
 var APIVersion = "/api/v1"
 
-// Conf configuruation
-type Conf struct {
-}
-
 // Ocean structure
 type Ocean struct {
-	conf Conf
+	conf tshttp.Conf
+}
+
+//Worker information of worker
+type Worker struct {
+	//endpoint is "ip:port"
+	endpoint string
+	name     string
 }
 
 // Oceans keep all information regarding to user request
 type Oceans struct {
-	Jobs map[string]*Ocean
+	workers []Worker
+	Jobs    map[string]*Ocean
 }
 
 func main() {
