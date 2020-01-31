@@ -14,6 +14,7 @@ import (
 	"time"
 
 	tshttp "github.com/tsunami/libs"
+	tsgrpc "github.com/tsunami/proto"
 	"github.com/valyala/fasthttp"
 )
 
@@ -432,6 +433,11 @@ func StartApp(service string, ctrl *TSControl, conf tshttp.Conf) {
 func main() {
 
 	ctrl := TSControl{services: make(map[string]*Tsunami)}
+
+	//Connection between Ocean and Tsunami
+	gRPCServer := tsgrpc.NewServer("127.0.0.1:8050")
+	gRPCServer.InitServer()
+	go gRPCServer.StartServer()
 
 	// Start deamon service
 	api := &tshttp.App{}

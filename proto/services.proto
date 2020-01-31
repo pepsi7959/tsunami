@@ -1,8 +1,20 @@
 syntax = "proto3";
 
-package tsunami;
+package tsgrpc;
 
 import "google/protobuf/timestamp.proto";
+
+
+service TSControl {
+
+    rpc Start (Request) returns (Response) {}
+
+    rpc Stop (Request) returns (Response) {}
+
+    rpc Restart (Request) returns (Response) {}
+
+    rpc GetMetrics (Request) returns (Response) {}
+}
 
 message Request{
     enum CommandType {
