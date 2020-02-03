@@ -48,8 +48,7 @@ func (oc *Ocean) JobMatching(job *Job) error {
 	for name, worker := range oc.workers {
 		if worker.remainingQouta >= pc {
 			//Asigns the job to this worker
-			workers := oc.jobToWorkers[name]
-			workers = append(workers, worker)
+			oc.jobToWorkers[job.conf.Name] = append(oc.jobToWorkers[job.conf.Name], worker)
 			//send command to a worker
 
 			req.Params.MaxConcurrences = int32(pc)
@@ -73,7 +72,7 @@ func (oc *Ocean) JobMatching(job *Job) error {
 		if worker.remainingQouta > 0 {
 			if worker.remainingQouta >= pc {
 				//Asigns the job to this worker
-				workers := oc.jobToWorkers[name]
+				workers := oc.jobToWorkers[job.conf.Name]
 				workers = append(workers, worker)
 				//send command to a worker
 				req.Params.MaxConcurrences = int32(pc)
@@ -88,7 +87,7 @@ func (oc *Ocean) JobMatching(job *Job) error {
 				pc = 0
 
 			} else {
-				workers := oc.jobToWorkers[name]
+				workers := oc.jobToWorkers[job.conf.Name]
 				workers = append(workers, worker)
 				//send command to a worker
 				req.Params.MaxConcurrences = int32(worker.remainingQouta)
@@ -200,8 +199,24 @@ func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 
 	workers := oc.jobToWorkers[job.conf.Name]
 
+	if workers == nil {
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{
+			Code:    40400,
+			Message: "Not found service : " + job.conf.Name,
+		})
+		return
+	}
+
 	for _, work := range workers {
-		work.gRPCClient.Stop(&reqGRPC)
+		fmt.Println("grpc: stoping service : ", job.conf.Name)
+		_, err := work.gRPCClient.Stop(&reqGRPC)
+		if err != nil {
+			tshttp.WriteSuccess(&w, nil, &tshttp.Error{
+				Code:    50000,
+				Message: err.Error(),
+			})
+			return
+		}
 	}
 
 	defer delete(oc.jobToWorkers, job.conf.Name)

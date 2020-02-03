@@ -85,6 +85,7 @@ func (s *GRPCServer) Stop(context context.Context, req *tsgrpc.Request) (*tsgrpc
 
 	t := s.Ctrl.services[tsConf.Name]
 	if t != nil {
+		fmt.Println("Stoping service name : ", tsConf.Name)
 		t.Stop()
 		t.apiServer.Stop()
 		delete(s.Ctrl.services, tsConf.Name)

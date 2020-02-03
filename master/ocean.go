@@ -82,8 +82,9 @@ type Ocean struct {
 
 func main() {
 	ocs := Ocean{
-		jobs:    make(map[string]*Job),
-		workers: make(map[string]*Worker),
+		jobs:         make(map[string]*Job),
+		workers:      make(map[string]*Worker),
+		jobToWorkers: make(map[string][]*Worker),
 	}
 	//Connection between Ocean and Tsunami
 	gRPCClient := NewClient()

@@ -57,6 +57,9 @@ type Tsunami struct {
 
 	// api service
 	apiServer *tshttp.App
+
+	// shell service
+	shell *Shell
 }
 
 // Init is used to initiaize parameters, logging and workers
@@ -146,6 +149,7 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 			avg = avg / float64(workers)
 			fmt.Println("\033[H\033[2J")
 			fmt.Println("----------------------------------------")
+			fmt.Println("Service Name           :", ts.conf.Name)
 			fmt.Println("Number of Worker       : ", len(ts.workers))
 			fmt.Println("Number of Errors       : ", numErr)
 			fmt.Println("Number of Requests     : ", numRes)
@@ -328,9 +332,11 @@ func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 
 	t := ctrl.services[req.Conf.Name]
 	if t != nil {
+		t.shell.Stop()
 		t.Stop()
 		t.apiServer.Stop()
 		delete(ctrl.services, req.Conf.Name)
+		time.Sleep(time.Second * 1)
 	} else {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultNotFound, Message: "service not found"})
 		return
@@ -389,21 +395,21 @@ func StartApp(service string, ctrl *TSControl, conf tshttp.Conf) {
 	ctrl.services[service] = &app
 	app.Run()
 
-	shell := Shell{Done: &app.done, enableReport: &app.enableReport}
-	shell.Init()
-	shell.AddCmd("+", app.AddNewWorker)
-	shell.AddCmd("help", app.ShowHelp)
-	shell.AddCmd("q", app.Quit)
-	shell.AddCmd("refresh", app.SetRefresh)
-	shell.AddCmd("report", app.SetEnableReport)
-	go shell.Run()
+	app.shell = &Shell{Done: &app.done, enableReport: &app.enableReport}
+	app.shell.Init()
+	app.shell.AddCmd("+", app.AddNewWorker)
+	app.shell.AddCmd("help", app.ShowHelp)
+	app.shell.AddCmd("q", app.Quit)
+	app.shell.AddCmd("refresh", app.SetRefresh)
+	app.shell.AddCmd("report", app.SetEnableReport)
+	go app.shell.Run()
 
 	go app.GenLoad()
 	go app.GenLoad()
 
 	go app.Monitoring(time.Duration(app.refresh) * time.Second)
 
-	// Start Api Service
+	//Start Api Service
 	app.apiServer = &tshttp.App{}
 	app.apiServer.Init("8091")
 	app.apiServer.AddAPI(APIVersion+"/metrics", app.GetMetrics)
