@@ -10,7 +10,6 @@ import (
 // Decoder decode request to json structure
 func Decoder(w http.ResponseWriter, r *http.Request, v interface{}) error {
 	defer r.Body.Close()
-
 	d := json.NewDecoder(r.Body)
 	err := d.Decode(v)
 

@@ -14,6 +14,8 @@ service TSControl {
     rpc Restart (Request) returns (Response) {}
 
     rpc GetMetrics (Request) returns (Response) {}
+
+    rpc Register(RegisterRequest) returns (Response){}
 }
 
 message Request{
@@ -39,8 +41,10 @@ message Request{
         string name = 1;
         string url = 2;
         HTTPMethod method = 3;
-        repeated HTTPHeader header = 4;
-        string body = 5;
+        string host = 4;
+        int32 maxConcurrences = 5;
+        repeated HTTPHeader header = 6;
+        string body = 7;
     }
 
     CommandType command = 1;
@@ -51,4 +55,10 @@ message Request{
 message Response{
     int32 error_code  = 1;
     string data = 2;
+}
+
+message RegisterRequest{
+    int32 id = 1;
+    string name = 2;
+    int32 maxConcurrences = 3;
 }

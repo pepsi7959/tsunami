@@ -7,6 +7,29 @@ import (
 //APIVersion version of APIs
 var APIVersion = "/api/v1"
 
+// AllowOrigin is a header to allow cross domain
+var AllowOrigin = "*"
+
+// Listen port
+var Listen = ":8080"
+
+// worker state
+// Cycle of State
+//
+// --> stop --> waiting --> Ready --> Busy --|---|
+// |                           ^--------------|  |
+// |---------------------------------------------|
+const (
+	//WokerStateWaiting waiting for complete connection
+	WokerStateWaiting = 0
+	//WokerStateReady ready to serve
+	WokerStateReady = 1
+	//WokerStateReady full of qouta
+	WokerBusy = 2
+	//WokerStop inactive worker
+	WokerStop = 3
+)
+
 //Stat statistic of service
 type Stat struct {
 	NumofRequests int
@@ -25,6 +48,10 @@ type Job struct {
 
 //Worker information of worker
 type Worker struct {
+
+	//state state of worker
+	state int
+
 	//endpoint is "ip:port"
 	endpoint string
 
@@ -36,6 +63,8 @@ type Worker struct {
 
 	//remainingQouta is the left of curcurrent request
 	remainingQouta int
+
+	gRPCClient *GRPCClient
 }
 
 // Ocean keep all information regarding to user request
@@ -52,7 +81,22 @@ type Ocean struct {
 }
 
 func main() {
-	ocs := Ocean{jobs: make(map[string]*Job)}
+	ocs := Ocean{
+		jobs:    make(map[string]*Job),
+		workers: make(map[string]*Worker),
+	}
+	//Connection between Ocean and Tsunami
+	gRPCClient := NewClient()
+	gRPCClient.InitClient("127.0.0.1:8050")
+
+	ocs.workers["w1"] = &Worker{
+		state:          WokerStateReady,
+		endpoint:       "127.0.0.1:8050",
+		name:           "w1",
+		maxQouta:       100,
+		remainingQouta: 100,
+		gRPCClient:     gRPCClient,
+	}
 
 	app := &tshttp.App{}
 	app.Init("8080")

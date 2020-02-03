@@ -2,10 +2,7 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -14,7 +11,6 @@ import (
 	"time"
 
 	tshttp "github.com/tsunami/libs"
-	tsgrpc "github.com/tsunami/proto"
 	"github.com/valyala/fasthttp"
 )
 
@@ -29,7 +25,8 @@ var AllowOrigin = "*"
 
 // TSControl used for storing tsunami service
 type TSControl struct {
-	services map[string]*Tsunami
+	services   map[string]*Tsunami
+	gRPCServer *GRPCServer
 }
 
 // Tsunami used to keep important infomation
@@ -266,22 +263,6 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-// Decoder decode request to json structure
-func (ctrl *TSControl) Decoder(w http.ResponseWriter, r *http.Request, v interface{}) error {
-	defer r.Body.Close()
-
-	d := json.NewDecoder(r.Body)
-	err := d.Decode(v)
-
-	if err == io.EOF {
-		//do nothing
-	} else if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return errors.New("JSON decode error: " + err.Error())
-	}
-	return nil
-}
-
 //CmdStart command to start worker
 func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 
@@ -289,43 +270,42 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
 
-	err := ctrl.Decoder(w, r, &req)
-
-	if err != nil {
-		fmt.Println(err)
+	//decode request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultBadRequest, Message: err.Error()})
 		return
 	}
 
 	fmt.Println("cmd: ", req.Cmd)
-	fmt.Println("Name: ", req.CmdConf.Name)
-	fmt.Println("Url: ", req.CmdConf.URL)
-	fmt.Println("Host: ", req.CmdConf.Host)
-	fmt.Println("Concurrence: ", req.CmdConf.Concurrence)
-	fmt.Println("Method: ", req.CmdConf.Method)
-	fmt.Println("Headers ", req.CmdConf.Headers)
-	fmt.Println("Body: ", req.CmdConf.Body)
+	fmt.Println("Name: ", req.Conf.Name)
+	fmt.Println("Url: ", req.Conf.URL)
+	fmt.Println("Host: ", req.Conf.Host)
+	fmt.Println("Concurrence: ", req.Conf.Concurrence)
+	fmt.Println("Method: ", req.Conf.Method)
+	fmt.Println("Headers ", req.Conf.Headers)
+	fmt.Println("Body: ", req.Conf.Body)
 
-	if req.CmdConf.Method == "" {
-		req.CmdConf.Method = "GET"
+	if req.Conf.Method == "" {
+		req.Conf.Method = "GET"
 	}
 
 	tsConf := tshttp.Conf{
-		Name:        req.CmdConf.Name,
-		URL:         req.CmdConf.URL,
-		Host:        req.CmdConf.Host,
-		Method:      req.CmdConf.Method,
-		Headers:     req.CmdConf.Headers,
-		Body:        req.CmdConf.Body,
-		Concurrence: req.CmdConf.Concurrence,
+		Name:        req.Conf.Name,
+		URL:         req.Conf.URL,
+		Host:        req.Conf.Host,
+		Method:      req.Conf.Method,
+		Headers:     req.Conf.Headers,
+		Body:        req.Conf.Body,
+		Concurrence: req.Conf.Concurrence,
 	}
 
-	if ctrl.services[req.CmdConf.Name] == nil {
-		go StartApp(req.CmdConf.Name, ctrl, tsConf)
+	if ctrl.services[req.Conf.Name] == nil {
+		go StartApp(req.Conf.Name, ctrl, tsConf)
 	}
 
 	data := make(map[string]string)
-	data["url"] = "http://" + GetIP().String() + ":8091" + APIVersion
-	data["name"] = req.CmdConf.Name
+	data["url"] = "http://" + tshttp.GetIP().String() + ":8091" + APIVersion
+	data["name"] = req.Conf.Name
 
 	tshttp.WriteSuccess(&w, &data, nil)
 }
@@ -338,16 +318,19 @@ func (ctrl *TSControl) CmdStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
 
 	//decode request
-	ctrl.Decoder(w, r, &req)
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultBadRequest, Message: err.Error()})
+		return
+	}
 
 	fmt.Println("Cmd: ", req.Cmd)
-	fmt.Println("Name: ", req.CmdConf.Name)
+	fmt.Println("Name: ", req.Conf.Name)
 
-	t := ctrl.services[req.CmdConf.Name]
+	t := ctrl.services[req.Conf.Name]
 	if t != nil {
 		t.Stop()
 		t.apiServer.Stop()
-		delete(ctrl.services, req.CmdConf.Name)
+		delete(ctrl.services, req.Conf.Name)
 	} else {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultNotFound, Message: "service not found"})
 		return
@@ -362,17 +345,20 @@ func (ctrl *TSControl) CmdMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
 
 	//decode request
-	ctrl.Decoder(w, r, &req)
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultBadRequest, Message: err.Error()})
+		return
+	}
 
 	fmt.Println("Cmd: ", req.Cmd)
-	fmt.Println("Name: ", req.CmdConf.Name)
+	fmt.Println("Name: ", req.Conf.Name)
 
 	if req.Cmd != "metrics" {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultInvalidCMD, Message: "invalid command"})
 		return
 	}
 
-	app := ctrl.services[req.CmdConf.Name]
+	app := ctrl.services[req.Conf.Name]
 
 	if app == nil {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: tshttp.ResultNotFound, Message: "service not found"})
@@ -435,9 +421,10 @@ func main() {
 	ctrl := TSControl{services: make(map[string]*Tsunami)}
 
 	//Connection between Ocean and Tsunami
-	gRPCServer := tsgrpc.NewServer("127.0.0.1:8050")
-	gRPCServer.InitServer()
-	go gRPCServer.StartServer()
+	ctrl.gRPCServer = NewServer("127.0.0.1:8050")
+	ctrl.gRPCServer.InitServer()
+	ctrl.gRPCServer.Ctrl = &ctrl
+	go ctrl.gRPCServer.StartServer()
 
 	// Start deamon service
 	api := &tshttp.App{}
