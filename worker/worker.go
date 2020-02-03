@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	tshttp "github.com/tsunami/libs"
 	"github.com/valyala/fasthttp"
 )
 
@@ -25,7 +26,7 @@ type Stat struct {
 
 //Worker structure
 type Worker struct {
-	conf   Conf
+	conf   tshttp.Conf
 	jobs   *chan Job
 	Done   *bool
 	client *fasthttp.HostClient
@@ -33,10 +34,10 @@ type Worker struct {
 }
 
 func (w *Worker) url() string {
-	if w.conf.url == "" {
-		return fmt.Sprintf("http://%s:%s%s", w.conf.host, w.conf.port, w.conf.path)
+	if w.conf.URL == "" {
+		return fmt.Sprintf("http://%s:%s%s", w.conf.Host, w.conf.Port, w.conf.Path)
 	}
-	return w.conf.url
+	return w.conf.URL
 }
 
 // UpdateErr update the error value
@@ -105,13 +106,13 @@ func (w *Worker) do() {
 
 	h := &req.Header
 
-	h.SetMethod(w.conf.method)
-	for k, v := range w.conf.headers {
+	h.SetMethod(w.conf.Method)
+	for k, v := range w.conf.Headers {
 		h.Add(k, v)
 	}
 
 	req.SetRequestURI(w.url())
-	req.SetBodyString(w.conf.body)
+	req.SetBodyString(w.conf.Body)
 
 	resp := fasthttp.AcquireResponse()
 	start := time.Now()

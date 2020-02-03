@@ -74,3 +74,8 @@ func (s *Shell) Run() {
 		}
 	}
 }
+
+//Stop stop shell process
+func (s *Shell) Stop() {
+	*s.Done = true
+}

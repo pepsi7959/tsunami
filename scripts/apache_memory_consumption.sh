@@ -1,0 +1,1 @@
+ps -ylC httpd | awk '{x += $8; ++y} END {print Apache Memory Usage (MB): x/1024  (y processes); print Average Proccess Size (MB): x/((y)*1024)}'

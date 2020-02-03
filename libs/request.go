@@ -16,6 +16,6 @@ type CmdConf struct {
 
 // Request sturcture
 type Request struct {
-	Cmd     string  `json:"cmd"`
-	CmdConf CmdConf `json:"conf"`
+	Cmd  string  `json:"cmd"`
+	Conf CmdConf `json:"conf"`
 }
