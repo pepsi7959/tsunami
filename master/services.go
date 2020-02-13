@@ -27,10 +27,10 @@ func getJob(req *tshttp.Request) Job {
 // JobMatching delegate a job to workers
 //
 // Algorithm:
-// First, asigns all concurrences to a worker having available concurrences and more than
+// First, assigns all concurrences to a worker having available concurrences and more than
 // the concurrences of a job
 //
-// Second, asigns the remainnging to each workers
+// Second, assigns the remainnging to each workers
 func (oc *Ocean) JobMatching(job *Job) error {
 
 	pc := job.pendingConcurrence
@@ -47,10 +47,8 @@ func (oc *Ocean) JobMatching(job *Job) error {
 	}
 	for name, worker := range oc.workers {
 		if worker.remainingQouta >= pc {
-			//Asigns the job to this worker
-			oc.jobToWorkers[job.conf.Name] = append(oc.jobToWorkers[job.conf.Name], worker)
-			//send command to a worker
 
+			//send command to a worker
 			req.Params.MaxConcurrences = int32(pc)
 			_, err := worker.gRPCClient.Start(&req)
 
@@ -58,9 +56,13 @@ func (oc *Ocean) JobMatching(job *Job) error {
 				return err
 			}
 
-			fmt.Printf("Asigns %v cuncurrences to worker %v", pc, name)
+			//Assigns the job to this worker
+			oc.jobToWorkers[job.conf.Name] = append(oc.jobToWorkers[job.conf.Name], &WorkerInfo{concurrence: pc, worker: worker})
+
+			fmt.Printf("Assigns all %v concurrences to worker %v\n", pc, name)
 			worker.remainingQouta = worker.remainingQouta - pc
 			pc = 0
+			fmt.Printf("Left queues: %v\n", pc)
 		}
 
 		if pc <= 0 {
@@ -71,9 +73,7 @@ func (oc *Ocean) JobMatching(job *Job) error {
 	for name, worker := range oc.workers {
 		if worker.remainingQouta > 0 {
 			if worker.remainingQouta >= pc {
-				//Asigns the job to this worker
-				workers := oc.jobToWorkers[job.conf.Name]
-				workers = append(workers, worker)
+
 				//send command to a worker
 				req.Params.MaxConcurrences = int32(pc)
 				_, err := worker.gRPCClient.Start(&req)
@@ -82,13 +82,18 @@ func (oc *Ocean) JobMatching(job *Job) error {
 					return err
 				}
 
-				fmt.Printf("Asigns %v cuncurrences to worker %v", pc, name)
+				//Assigns the job to this worker
+				workers := oc.jobToWorkers[job.conf.Name]
+				workers = append(workers, &WorkerInfo{concurrence: pc, worker: worker})
+				oc.jobToWorkers[job.conf.Name] = workers
+
+				fmt.Printf("Assigns %v concurrences to worker %v\n", pc, name)
 				worker.remainingQouta = worker.remainingQouta - pc
 				pc = 0
+				fmt.Printf("Left queues: %v\n", pc)
 
 			} else {
-				workers := oc.jobToWorkers[job.conf.Name]
-				workers = append(workers, worker)
+
 				//send command to a worker
 				req.Params.MaxConcurrences = int32(worker.remainingQouta)
 				_, err := worker.gRPCClient.Start(&req)
@@ -97,9 +102,14 @@ func (oc *Ocean) JobMatching(job *Job) error {
 					return err
 				}
 
-				fmt.Printf("Asigns %v cuncurrences to worker %v", pc, name)
+				workers := oc.jobToWorkers[job.conf.Name]
+				workers = append(workers, &WorkerInfo{concurrence: worker.remainingQouta, worker: worker})
+				oc.jobToWorkers[job.conf.Name] = workers
+
+				fmt.Printf("Assigns %v concurrences to worker %v\n", worker.remainingQouta, name)
 				pc -= worker.remainingQouta
 				worker.remainingQouta = 0
+				fmt.Printf("Left queues: %v\n", pc)
 			}
 		}
 
@@ -109,6 +119,44 @@ func (oc *Ocean) JobMatching(job *Job) error {
 	}
 
 	return errors.New("Insuficient Quata or Worker unavailable")
+}
+
+func (oc *Ocean) destroy(job *Job) error {
+
+	reqGRPC := tsgrpc.Request{
+		Command: tsgrpc.Request_STOP,
+		Params: &tsgrpc.Request_Params{
+			Name:            job.conf.Name,
+			Url:             job.conf.URL,
+			Method:          tsgrpc.Request_GET,
+			Host:            job.conf.Host,
+			MaxConcurrences: int32(job.conf.MaxConns),
+			Body:            job.conf.Body,
+		},
+	}
+
+	fmt.Printf("Finding service: %v ...\n", job.conf.Name)
+	workers := oc.jobToWorkers[job.conf.Name]
+
+	if workers == nil {
+		return errors.New("Not found service : " + job.conf.Name)
+	}
+
+	for _, wrkInfo := range workers {
+		fmt.Println("grpc: stoping service : ", job.conf.Name, " for worker: ", wrkInfo.worker.name)
+		wrkInfo.worker.remainingQouta += wrkInfo.concurrence
+		fmt.Printf("Recaim %v concurrences to worker : %v\n", wrkInfo.concurrence, wrkInfo.worker.name)
+		_, err := wrkInfo.worker.gRPCClient.Stop(&reqGRPC)
+		if err != nil {
+			fmt.Println("destroy error: " + err.Error())
+			return err
+		}
+	}
+
+	defer delete(oc.jobs, job.conf.Name)
+	defer delete(oc.jobToWorkers, job.conf.Name)
+
+	return nil
 }
 
 // Start begin calling worker to generate load
@@ -147,6 +195,13 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 	oc.jobs[job.conf.Name] = &job
 
 	if err = oc.JobMatching(&job); err != nil {
+
+		fmt.Println("Warning: " + err.Error())
+
+		if e := oc.destroy(&job); e != nil {
+			fmt.Println("Error: " + e.Error())
+		}
+
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 503, Message: err.Error()})
 	} else {
 		tshttp.WriteSuccess(&w, nil, nil)
@@ -183,43 +238,10 @@ func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer delete(oc.jobs, job.conf.Name)
-
-	reqGRPC := tsgrpc.Request{
-		Command: tsgrpc.Request_STOP,
-		Params: &tsgrpc.Request_Params{
-			Name:            job.conf.Name,
-			Url:             job.conf.URL,
-			Method:          tsgrpc.Request_GET,
-			Host:            job.conf.Host,
-			MaxConcurrences: int32(job.conf.MaxConns),
-			Body:            job.conf.Body,
-		},
-	}
-
-	workers := oc.jobToWorkers[job.conf.Name]
-
-	if workers == nil {
-		tshttp.WriteSuccess(&w, nil, &tshttp.Error{
-			Code:    40400,
-			Message: "Not found service : " + job.conf.Name,
-		})
+	if err := oc.destroy(&job); err != nil {
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: err.Error()})
 		return
 	}
-
-	for _, work := range workers {
-		fmt.Println("grpc: stoping service : ", job.conf.Name)
-		_, err := work.gRPCClient.Stop(&reqGRPC)
-		if err != nil {
-			tshttp.WriteSuccess(&w, nil, &tshttp.Error{
-				Code:    50000,
-				Message: err.Error(),
-			})
-			return
-		}
-	}
-
-	defer delete(oc.jobToWorkers, job.conf.Name)
 
 	tshttp.WriteSuccess(&w, nil, nil)
 }
@@ -239,4 +261,14 @@ func (oc *Ocean) Register(r *tsgrpc.RegisterRequest) (*tsgrpc.Response, error) {
 		ErrorCode: 200,
 		Data:      "OK",
 	}, nil
+}
+
+// Monitoring monitor all status of workers.
+func (oc *Ocean) Monitoring() {
+	for jobname, wrkLists := range oc.jobToWorkers {
+		for i := 0; i < len(wrkLists); i++ {
+			wrkInfo := wrkLists[i]
+			fmt.Println("Monitor job: " + jobname + ", worker: " + wrkInfo.worker.name)
+		}
+	}
 }
