@@ -1,7 +1,23 @@
 # Tsunami
-It's load generator platform designed to test performance. In case of tuning system or finding limtation of a system, we need comfortable and stable tools. It's developed by Golang, which uses less memory footprint.
+It's load generator platform designed to test performance of system. In case of tuning system or finding limitation of a system, we need a comfortable and stable tool. It've been developed by Golang, which uses less memory footprint.
 
 ----
+
+## System Architecture
+  There are three components.
+  1) **Web Control**, It's rich and simple user interface which helps an user to control Tsunami. It provides several commands including _start_, _restart_, _stop_, _metrics_ and so on.
+  2) **Ocean**, It's master node that be used to receive command from an user and control Tsunami(woker node)
+  3) **Tsunami**, It's worker node that generates load requests to target
+  
+![](./images/architecture.png)
+ 
+## Ocean Blueprint(Master node)
+
+![](./images/ocean.png)
+
+## Tsunami Blueprint(Worker node)
+
+![](./images/tsunami.png)
 
 ## Prerequisite for a client
 
