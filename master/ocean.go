@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	tshttp "github.com/tsunami/libs"
 )
 
@@ -67,24 +69,33 @@ type Worker struct {
 	gRPCClient *GRPCClient
 }
 
+//WorkerInfo keep assignement and worker information
+type WorkerInfo struct {
+	//number of concurrence have been assigned to the worker
+	concurrence int
+
+	//The worker that was assigned a job.
+	worker *Worker
+}
+
 // Ocean keep all information regarding to user request
 type Ocean struct {
 	//Workers list of registered worker
 	workers map[string]*Worker
 
-	//jobs is map which is asigned from an user
+	//jobs is map which is assigned from an user
 	//key is service name, value is request from user
 	jobs map[string]*Job
 
 	//jobToWorkers is mapping between a job and workers
-	jobToWorkers map[string][]*Worker
+	jobToWorkers map[string][]*WorkerInfo
 }
 
 func main() {
 	ocs := Ocean{
 		jobs:         make(map[string]*Job),
 		workers:      make(map[string]*Worker),
-		jobToWorkers: make(map[string][]*Worker),
+		jobToWorkers: make(map[string][]*WorkerInfo),
 	}
 	//Connection between Ocean and Tsunami
 	gRPCClient := NewClient()
@@ -94,10 +105,25 @@ func main() {
 		state:          WokerStateReady,
 		endpoint:       "127.0.0.1:8050",
 		name:           "w1",
-		maxQouta:       100,
-		remainingQouta: 100,
+		maxQouta:       2,
+		remainingQouta: 2,
 		gRPCClient:     gRPCClient,
 	}
+	ocs.workers["w2"] = &Worker{
+		state:          WokerStateReady,
+		endpoint:       "127.0.0.1:8050",
+		name:           "w2",
+		maxQouta:       2,
+		remainingQouta: 2,
+		gRPCClient:     gRPCClient,
+	}
+
+	go func() {
+		for true {
+			ocs.Monitoring()
+			time.Sleep(1 * time.Second)
+		}
+	}()
 
 	app := &tshttp.App{}
 	app.Init("8080")

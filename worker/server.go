@@ -52,22 +52,23 @@ func (s *GRPCServer) Start(context context.Context, req *tsgrpc.Request) (*tsgrp
 
 	if s.Ctrl.services[tsConf.Name] == nil {
 		go StartApp(tsConf.Name, s.Ctrl, tsConf)
+		data := struct {
+			url  string
+			name string
+		}{
+			url:  "http://" + tshttp.GetIP().String() + ":8091" + APIVersion,
+			name: tsConf.Name,
+		}
+		jdata, _ := json.Marshal(data)
+
+		res := tsgrpc.Response{
+			ErrorCode: 0,
+			Data:      string(jdata),
+		}
+		return &res, nil
 	}
 
-	data := struct {
-		url  string
-		name string
-	}{
-		url:  "http://" + tshttp.GetIP().String() + ":8091" + APIVersion,
-		name: tsConf.Name,
-	}
-	jdata, _ := json.Marshal(data)
-
-	res := tsgrpc.Response{
-		ErrorCode: 0,
-		Data:      string(jdata),
-	}
-	return &res, nil
+	return nil, errors.New(tsConf.Name + " already exist")
 }
 
 //Stop send stop command
@@ -98,7 +99,7 @@ func (s *GRPCServer) Stop(context context.Context, req *tsgrpc.Request) (*tsgrpc
 		return &res, nil
 	}
 
-	return nil, errors.New("Not found service")
+	return nil, errors.New("not found service")
 }
 
 //Restart send re-start command

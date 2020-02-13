@@ -44,7 +44,7 @@ func WriteSuccess(w *http.ResponseWriter, data *map[string]string, err *Error) {
 	(*w).Header().Set("Content-Type", "application/json")
 
 	if err != nil {
-		resp := Response{Error: Error{Message: err.Message}}
+		resp := Response{Error: Error{Code: err.Code, Message: err.Message}}
 		JSONResp, _ := json.Marshal(&resp)
 		fmt.Fprintf(*w, string(JSONResp))
 	} else {
