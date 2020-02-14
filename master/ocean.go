@@ -1,9 +1,14 @@
 package main
 
 import (
+	"encoding/json"
+	"log"
 	"time"
 
+	tsetcd "github.com/tsunami/etcd"
 	tshttp "github.com/tsunami/libs"
+	tsregistry "github.com/tsunami/registry"
+	clientv3 "go.etcd.io/etcd/clientv3"
 )
 
 //APIVersion version of APIs
@@ -92,30 +97,52 @@ type Ocean struct {
 }
 
 func main() {
+
 	ocs := Ocean{
 		jobs:         make(map[string]*Job),
 		workers:      make(map[string]*Worker),
 		jobToWorkers: make(map[string][]*WorkerInfo),
 	}
-	//Connection between Ocean and Tsunami
-	gRPCClient := NewClient()
-	gRPCClient.InitClient("127.0.0.1:8050")
 
-	ocs.workers["w1"] = &Worker{
-		state:          WokerStateReady,
-		endpoint:       "127.0.0.1:8050",
-		name:           "w1",
-		maxQouta:       2,
-		remainingQouta: 2,
-		gRPCClient:     gRPCClient,
+	etcdClient := tsetcd.EtcdClient{
+		Conf: clientv3.Config{
+			Endpoints:   []string{"localhost:2379", "localhost:22379", "localhost:32379"},
+			DialTimeout: 5 * time.Second,
+		},
+		RequestTimeOut: time.Second * 5,
+		Done:           false,
 	}
-	ocs.workers["w2"] = &Worker{
-		state:          WokerStateReady,
-		endpoint:       "127.0.0.1:8050",
-		name:           "w2",
-		maxQouta:       2,
-		remainingQouta: 2,
-		gRPCClient:     gRPCClient,
+
+	key := "tsunami_config_client_"
+	workerConfs, err := etcdClient.GetRange(key)
+
+	if err != nil {
+		log.Fatalf("etcd connect failed: %v\n", err.Error())
+	}
+
+	for k, v := range workerConfs {
+
+		wkConf := tsregistry.Conf{}
+		err = json.Unmarshal(v, &wkConf)
+
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+
+		log.Println(k, " : ", wkConf)
+
+		//Connection between Ocean and Tsunami
+		gRPCClient := NewClient()
+		gRPCClient.InitClient(wkConf.Endpoint)
+
+		ocs.workers[wkConf.ID] = &Worker{
+			state:          WokerStateReady,
+			endpoint:       wkConf.Endpoint,
+			name:           wkConf.ID,
+			maxQouta:       wkConf.MaxConcurrences,
+			remainingQouta: wkConf.MaxConcurrences,
+			gRPCClient:     gRPCClient,
+		}
 	}
 
 	go func() {
