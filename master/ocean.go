@@ -103,48 +103,49 @@ type Ocean struct {
 	viper *viper.Viper
 }
 
-func (oc *Ocean) readConf() {
+func readConf() *viper.Viper {
 
-	oc.viper = viper.New()
+	viper := viper.New()
 
 	flag.String("path", ".", "configuration path")
 	flag.String("file", "config.yaml", "config file name")
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	oc.viper.BindPFlags(pflag.CommandLine)
+	viper.BindPFlags(pflag.CommandLine)
 
-	confName := oc.viper.GetString("file")
+	confName := viper.GetString("file")
 	confName = strings.Split(confName, ".")[0]
 
 	log.Printf("config file: %v\n", confName)
 
-	oc.viper.SetConfigName(confName)
-	oc.viper.SetConfigType("yaml")
-	oc.viper.AddConfigPath("./")
-	oc.viper.AddConfigPath(oc.viper.GetString("path"))
+	viper.SetConfigName(confName)
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("./")
+	viper.AddConfigPath(viper.GetString("path"))
 
-	oc.viper.SetDefault("name", "master")
-	oc.viper.SetDefault("id", "fed3f59d-9b32-4efe-a372-ca02d7ea9f66")
+	viper.SetDefault("name", "master")
+	viper.SetDefault("id", "fed3f59d-9b32-4efe-a372-ca02d7ea9f66")
 
 	//Registry Configuration
-	oc.viper.SetDefault("registry.endpoints", []string{"localhost:2379", "localhost:22379", "localhost:32379"})
-	oc.viper.SetDefault("registry.request_timeout", 2)
-	oc.viper.SetDefault("registry.dial_timeout", 2)
+	viper.SetDefault("registry.endpoints", []string{"localhost:2379", "localhost:22379", "localhost:32379"})
+	viper.SetDefault("registry.request_timeout", 2)
+	viper.SetDefault("registry.dial_timeout", 2)
 
 	//Key range of client
-	oc.viper.SetDefault("registry.client_config_key", "tsunami_config_client_")
+	viper.SetDefault("registry.client_config_key", "tsunami_config_client_")
 
-	err := oc.viper.ReadInConfig() // Find and read the config file
-	if err != nil {                // Handle errors reading the config file
+	err := viper.ReadInConfig() // Find and read the config file
+	if err != nil {             // Handle errors reading the config file
 		panic(fmt.Errorf("Fatal error config file: %s \n", err))
 	}
-
+	return viper
 }
 
 //New create Ocean
-func New() *Ocean {
+func New(conf *viper.Viper) *Ocean {
 	return &Ocean{
+		viper:        conf,
 		jobs:         make(map[string]*Job),
 		workers:      make(map[string]*Worker),
 		jobToWorkers: make(map[string][]*WorkerInfo),
@@ -182,9 +183,9 @@ func (oc *Ocean) NewWorker(wrkConf *tsregistry.Conf) *Worker {
 
 func main() {
 
-	ocs := New()
+	conf := readConf()
+	ocs := New(conf)
 
-	ocs.readConf()
 	log.Println("Master ID: ", ocs.viper.GetString("id"))
 
 	etcdClient := ocs.NewEtcdClient()
@@ -196,7 +197,7 @@ func main() {
 		log.Fatalf("etcd connect failed: %v\n", err.Error())
 	}
 
-	for k, v := range wokerConfLists {
+	for _, v := range wokerConfLists {
 
 		conf := tsregistry.Conf{}
 		err = json.Unmarshal(v, &conf)
@@ -205,7 +206,7 @@ func main() {
 			log.Fatalf(err.Error())
 		}
 
-		log.Println(k, " : ", conf)
+		//log.Println("key: ", k, " value: ", conf)
 
 		ocs.workers[conf.ID] = ocs.NewWorker(&conf)
 	}
@@ -218,7 +219,7 @@ func main() {
 	}()
 
 	app := &tshttp.App{}
-	app.Init("8080")
+	app.Init(ocs.viper.GetString("endpoints.http"))
 	app.AddAPI(APIVersion+"/start", ocs.Start)
 	app.AddAPI(APIVersion+"/stop", ocs.Stop)
 	app.AddAPI(APIVersion+"/metrics", ocs.GetMetrics)

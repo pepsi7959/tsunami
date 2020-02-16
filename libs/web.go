@@ -19,12 +19,12 @@ func help(w http.ResponseWriter, r *http.Request) {
 }
 
 //Init intilize server
-func (app *App) Init(port string) {
+func (app *App) Init(endPoint string) {
 
 	app.setRoute()
 
 	app.Server = http.Server{
-		Addr:           ":" + port,
+		Addr:           endPoint,
 		Handler:        app.ServeMux,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
