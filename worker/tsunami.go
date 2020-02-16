@@ -3,13 +3,17 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	tsetcd "github.com/tsunami/etcd"
 	tshttp "github.com/tsunami/libs"
 	tsregistry "github.com/tsunami/registry"
@@ -27,8 +31,8 @@ const APIAdmin = "/api/v1/admin"
 var AllowOrigin = "*"
 
 const (
-	modeStandAlone = 1
-	modeCluster    = 2
+	modeStandAlone = "standalone"
+	modeCluster    = "cluster"
 )
 
 // TSControl used for storing tsunami service
@@ -41,7 +45,7 @@ type TSControl struct {
 
 	etcdConf clientv3.Config
 
-	mode int
+	mode string
 
 	services   map[string]*Tsunami
 	gRPCServer *GRPCServer
@@ -52,6 +56,7 @@ type TSControl struct {
 	done               bool
 
 	workerConf *tsregistry.Conf
+	viper      *viper.Viper
 }
 
 // Tsunami used to keep important infomation
@@ -297,44 +302,97 @@ func StartApp(service string, ctrl *TSControl, conf tshttp.Conf) {
 
 }
 
-func main() {
+func readConf() *viper.Viper {
 
-	ctrl := TSControl{services: make(map[string]*Tsunami),
-		mode:               modeCluster,
+	viper := viper.New()
+
+	flag.String("path", ".", "configuration path")
+	flag.String("file", "config.yaml", "config file name")
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
+
+	viper.BindPFlags(pflag.CommandLine)
+
+	confName := viper.GetString("file")
+	confName = strings.Split(confName, ".")[0]
+
+	log.Printf("config file: %v\n", confName)
+
+	viper.SetConfigName(confName)
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("./")
+	viper.AddConfigPath(viper.GetString("path"))
+
+	viper.SetDefault("name", "worker-0")
+	viper.SetDefault("id", "8cd50597-39df-473f-af2e-33e116f53105")
+	viper.SetDefault("concurence", 10)
+	viper.SetDefault("mode", "cluster")
+	viper.SetDefault("endpoints.grpc", "127.0.0.1:8050")
+	viper.SetDefault("endpoints.http", "127.0.0.1:8090")
+
+	//Registry Configuration
+	viper.SetDefault("registry.endpoints", []string{"localhost:2379", "localhost:22379", "localhost:32379"})
+	viper.SetDefault("registry.request_timeout", 2)
+	viper.SetDefault("registry.dial_timeout", 2)
+
+	//Key range of client
+	viper.SetDefault("registry.client_config_key", "tsunami_config_client_")
+
+	err := viper.ReadInConfig() // Find and read the config file
+	if err != nil {             // Handle errors reading the config file
+		panic(fmt.Errorf("Fatal error config file: %s \n", err))
+	}
+	return viper
+
+}
+
+//New create TSControl
+func New(viper *viper.Viper) *TSControl {
+	log.Println("woker id: ", viper.GetString("id"))
+	log.Println("worker name: ", viper.GetString("name"))
+	return &TSControl{services: make(map[string]*Tsunami),
+		mode:               viper.GetString("mode"),
 		done:               false,
 		intervalUpdateConf: time.Minute * 1,
+		viper:              viper,
 		workerConf: &tsregistry.Conf{
-			Endpoint:        "127.0.0.1:8050",
-			ID:              "8cd50597-39df-473f-af2e-33e116f53105",
-			Name:            "worker-8cd50597",
-			MaxConcurrences: 10,
+			Endpoint:        viper.GetString("endpoints.grpc"),
+			ID:              viper.GetString("id"),
+			Name:            viper.GetString("name"),
+			MaxConcurrences: viper.GetInt("concurence"),
 		}}
+}
+
+func main() {
+
+	config := readConf()
+	ctrl := New(config)
 
 	//Connection between Ocean and Tsunami
-	ctrl.gRPCServer = NewServer("127.0.0.1:8050")
+	ctrl.gRPCServer = NewServer(ctrl.viper.GetString("endpoints.grpc"))
 	ctrl.gRPCServer.InitServer()
-	ctrl.gRPCServer.Ctrl = &ctrl
+	ctrl.gRPCServer.Ctrl = ctrl
+
 	go ctrl.gRPCServer.StartServer()
 
 	if ctrl.mode == modeCluster {
 
 		etcdClient := tsetcd.EtcdClient{
 			Conf: clientv3.Config{
-				Endpoints:   []string{"localhost:2379", "localhost:22379", "localhost:32379"},
-				DialTimeout: 5 * time.Second,
+				Endpoints:   ctrl.viper.GetStringSlice("registry.endpoints"),
+				DialTimeout: time.Second * time.Duration(ctrl.viper.GetInt("registry.dial_timeout")),
 			},
-			RequestTimeOut: time.Second * 5,
+			RequestTimeOut: time.Second * time.Duration(ctrl.viper.GetInt("registry.request_timeout")),
 			Done:           false,
 		}
 
-		key := "tsunami_config_client_8cd50597-39df-473f-af2e-33e116f53105"
 		value, err := json.Marshal(ctrl.workerConf)
 
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
 
-		err = etcdClient.Put(key, string(value))
+		err = etcdClient.Put(ctrl.viper.GetString("registry.client_config_key")+ctrl.viper.GetString("id"), string(value))
 
 		if err != nil {
 			log.Fatalf(err.Error())
@@ -343,7 +401,7 @@ func main() {
 	}
 	// Start deamon service
 	api := &tshttp.App{}
-	api.Init("8090")
+	api.Init(ctrl.viper.GetString("endpoints.http"))
 	api.AddAPI(APIAdmin+"/start", ctrl.CmdStart)
 	api.AddAPI(APIAdmin+"/stop", ctrl.CmdStop)
 	api.AddAPI(APIAdmin+"/metrics", ctrl.CmdMetrics)

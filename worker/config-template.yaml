@@ -1,7 +1,12 @@
-name: master
-id: fed3f59d-9b32-4efe-a372-ca02d7ea9f66
+name: worker-33e116f53106
+id: 8cd50597-39df-473f-af2e-33e116f53106
+concurence: 10
+#mode "cluster" or "standalone"
+mode: cluster
 endpoints:
-  http: 127.0.0.1:8080
+  grpc: 127.0.0.1:8050
+  http: 127.0.0.1:8090
+
 
 registry:
   request_timeout: 2
