@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -106,14 +108,20 @@ func (oc *Ocean) readConf() {
 	oc.viper = viper.New()
 
 	flag.String("path", ".", "configuration path")
+	flag.String("file", "config.yaml", "config file name")
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
 	oc.viper.BindPFlags(pflag.CommandLine)
 
-	oc.viper.SetConfigName("config")
+	confName := oc.viper.GetString("file")
+	confName = strings.Split(confName, ".")[0]
+
+	log.Printf("config file: %v\n", confName)
+
+	oc.viper.SetConfigName(confName)
 	oc.viper.SetConfigType("yaml")
-	oc.viper.AddConfigPath(".")
+	oc.viper.AddConfigPath("./")
 	oc.viper.AddConfigPath(oc.viper.GetString("path"))
 
 	oc.viper.SetDefault("name", "master")
@@ -121,11 +129,17 @@ func (oc *Ocean) readConf() {
 
 	//Registry Configuration
 	oc.viper.SetDefault("registry.endpoints", []string{"localhost:2379", "localhost:22379", "localhost:32379"})
-	oc.viper.SetDefault("request_timeout", 2)
-	oc.viper.SetDefault("dial_timeout", 2)
+	oc.viper.SetDefault("registry.request_timeout", 2)
+	oc.viper.SetDefault("registry.dial_timeout", 2)
 
 	//Key range of client
-	oc.viper.SetDefault("client_config_key", "tsunami_config_client_")
+	oc.viper.SetDefault("registry.client_config_key", "tsunami_config_client_")
+
+	err := oc.viper.ReadInConfig() // Find and read the config file
+	if err != nil {                // Handle errors reading the config file
+		panic(fmt.Errorf("Fatal error config file: %s \n", err))
+	}
+
 }
 
 //New create Ocean
@@ -142,9 +156,9 @@ func (oc *Ocean) NewEtcdClient() tsetcd.EtcdClient {
 	return tsetcd.EtcdClient{
 		Conf: clientv3.Config{
 			Endpoints:   oc.viper.GetStringSlice("registry.endpoints"),
-			DialTimeout: time.Second * time.Duration(oc.viper.GetInt("dial_timeout")),
+			DialTimeout: time.Second * time.Duration(oc.viper.GetInt("registry.dial_timeout")),
 		},
-		RequestTimeOut: time.Second * time.Duration(oc.viper.GetInt("request_timeout")),
+		RequestTimeOut: time.Second * time.Duration(oc.viper.GetInt("registry.request_timeout")),
 		Done:           false,
 	}
 }
@@ -171,6 +185,7 @@ func main() {
 	ocs := New()
 
 	ocs.readConf()
+	log.Println("Master ID: ", ocs.viper.GetString("id"))
 
 	etcdClient := ocs.NewEtcdClient()
 
