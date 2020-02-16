@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"log"
 	"time"
 
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	tsetcd "github.com/tsunami/etcd"
 	tshttp "github.com/tsunami/libs"
 	tsregistry "github.com/tsunami/registry"
@@ -94,55 +97,102 @@ type Ocean struct {
 
 	//jobToWorkers is mapping between a job and workers
 	jobToWorkers map[string][]*WorkerInfo
+
+	viper *viper.Viper
 }
 
-func main() {
+func (oc *Ocean) readConf() {
 
-	ocs := Ocean{
+	oc.viper = viper.New()
+
+	flag.String("path", ".", "configuration path")
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
+
+	oc.viper.BindPFlags(pflag.CommandLine)
+
+	oc.viper.SetConfigName("config")
+	oc.viper.SetConfigType("yaml")
+	oc.viper.AddConfigPath(".")
+	oc.viper.AddConfigPath(oc.viper.GetString("path"))
+
+	oc.viper.SetDefault("name", "master")
+	oc.viper.SetDefault("id", "fed3f59d-9b32-4efe-a372-ca02d7ea9f66")
+
+	//Registry Configuration
+	oc.viper.SetDefault("registry.endpoints", []string{"localhost:2379", "localhost:22379", "localhost:32379"})
+	oc.viper.SetDefault("request_timeout", 2)
+	oc.viper.SetDefault("dial_timeout", 2)
+
+	//Key range of client
+	oc.viper.SetDefault("client_config_key", "tsunami_config_client_")
+}
+
+//New create Ocean
+func New() *Ocean {
+	return &Ocean{
 		jobs:         make(map[string]*Job),
 		workers:      make(map[string]*Worker),
 		jobToWorkers: make(map[string][]*WorkerInfo),
 	}
+}
 
-	etcdClient := tsetcd.EtcdClient{
+//NewEtcdClient create ocean client
+func (oc *Ocean) NewEtcdClient() tsetcd.EtcdClient {
+	return tsetcd.EtcdClient{
 		Conf: clientv3.Config{
-			Endpoints:   []string{"localhost:2379", "localhost:22379", "localhost:32379"},
-			DialTimeout: 5 * time.Second,
+			Endpoints:   oc.viper.GetStringSlice("registry.endpoints"),
+			DialTimeout: time.Second * time.Duration(oc.viper.GetInt("dial_timeout")),
 		},
-		RequestTimeOut: time.Second * 5,
+		RequestTimeOut: time.Second * time.Duration(oc.viper.GetInt("request_timeout")),
 		Done:           false,
 	}
+}
 
-	key := "tsunami_config_client_"
-	workerConfs, err := etcdClient.GetRange(key)
+//NewWorker create a worker
+func (oc *Ocean) NewWorker(wrkConf *tsregistry.Conf) *Worker {
+
+	//Connection between Ocean and Tsunami
+	gRPCClient := NewClient()
+	gRPCClient.InitClient(wrkConf.Endpoint)
+
+	return &Worker{
+		state:          WokerStateReady,
+		endpoint:       wrkConf.Endpoint,
+		name:           wrkConf.ID,
+		maxQouta:       wrkConf.MaxConcurrences,
+		remainingQouta: wrkConf.MaxConcurrences,
+		gRPCClient:     gRPCClient,
+	}
+}
+
+func main() {
+
+	ocs := New()
+
+	ocs.readConf()
+
+	etcdClient := ocs.NewEtcdClient()
+
+	//Get list of woker from registry(Etcd)
+	wokerConfLists, err := etcdClient.GetRange(ocs.viper.GetString("client_config_key"))
 
 	if err != nil {
 		log.Fatalf("etcd connect failed: %v\n", err.Error())
 	}
 
-	for k, v := range workerConfs {
+	for k, v := range wokerConfLists {
 
-		wkConf := tsregistry.Conf{}
-		err = json.Unmarshal(v, &wkConf)
+		conf := tsregistry.Conf{}
+		err = json.Unmarshal(v, &conf)
 
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
 
-		log.Println(k, " : ", wkConf)
+		log.Println(k, " : ", conf)
 
-		//Connection between Ocean and Tsunami
-		gRPCClient := NewClient()
-		gRPCClient.InitClient(wkConf.Endpoint)
-
-		ocs.workers[wkConf.ID] = &Worker{
-			state:          WokerStateReady,
-			endpoint:       wkConf.Endpoint,
-			name:           wkConf.ID,
-			maxQouta:       wkConf.MaxConcurrences,
-			remainingQouta: wkConf.MaxConcurrences,
-			gRPCClient:     gRPCClient,
-		}
+		ocs.workers[conf.ID] = ocs.NewWorker(&conf)
 	}
 
 	go func() {
