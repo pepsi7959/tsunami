@@ -364,3 +364,43 @@ func (oc *Ocean) Monitoring() {
 		}
 	}
 }
+
+// GetInfo master configuration
+func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
+	var req tshttp.Request
+
+	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+
+	err := tshttp.Decoder(w, r, &req)
+
+	if err != nil {
+		fmt.Printf(err.Error())
+		return
+	}
+
+	maxConcurrent := 0
+	remainingQouta := 0
+	data := make(map[string]string)
+
+	for ID, worker := range oc.workers {
+		wrkName := "worker_" + ID + "_"
+		data[wrkName+"max_qouta"] = fmt.Sprintf("%d", worker.maxQouta)
+		data[wrkName+"remain_qouta"] = fmt.Sprintf("%d", worker.remainingQouta)
+		maxConcurrent += worker.maxQouta
+		remainingQouta += worker.remainingQouta
+	}
+
+	data["name"] = oc.viper.GetString("name")
+	data["id"] = oc.viper.GetString("id")
+	// data["registry.endpoints"] = oc.viper.GetStringSlice("registry.endpoints")
+	data["registry.request_timeout"] = oc.viper.GetString("registry.request_timeout")
+	data["registry.dial_timeout"] = oc.viper.GetString("registry.dial_timeout")
+	data["registry.client_config_key"] = oc.viper.GetString("registry.client_config_key")
+	data["workers"] = fmt.Sprintf("%d", len(oc.workers))
+
+	data["max_concurrent"] = fmt.Sprintf("%d", maxConcurrent)
+	data["remaining_Concurrent"] = fmt.Sprintf("%d", remainingQouta)
+
+	tshttp.WriteSuccess(&w, &data, nil)
+
+}

@@ -67,7 +67,10 @@ type Worker struct {
 	//endpoint is "ip:port"
 	endpoint string
 
-	//name is worker name
+	//ID worker
+	ID string
+
+	//worker name
 	name string
 
 	//maxQuata maximum concurrent request
@@ -174,7 +177,8 @@ func (oc *Ocean) NewWorker(wrkConf *tsregistry.Conf) *Worker {
 	return &Worker{
 		state:          WokerStateReady,
 		endpoint:       wrkConf.Endpoint,
-		name:           wrkConf.ID,
+		ID:             wrkConf.ID,
+		name:           wrkConf.Name,
 		maxQouta:       wrkConf.MaxConcurrences,
 		remainingQouta: wrkConf.MaxConcurrences,
 		gRPCClient:     gRPCClient,
@@ -223,6 +227,7 @@ func main() {
 	app.AddAPI(APIVersion+"/start", ocs.Start)
 	app.AddAPI(APIVersion+"/stop", ocs.Stop)
 	app.AddAPI(APIVersion+"/metrics", ocs.GetMetrics)
+	app.AddAPI(APIVersion+"/info", ocs.GetInfo)
 	app.Run()
 
 }
