@@ -1,0 +1,23 @@
+name: worker-33e116f53102
+id: 8cd50597-39df-473f-af2e-33e116f53102
+concurence: 10
+#mode "cluster" or "standalone"
+mode: cluster
+endpoints:
+  grpc: 127.0.0.1:8052
+  http: 127.0.0.1:8092
+
+
+registry:
+  request_timeout: 2
+  dial_timeout: 2
+
+  #default client_config_key is  tsunami_config_client_
+  #client_config_key: tsunami_config_client_
+  
+  #defualt endpoints is [localhost:2379, localhost:22379, localhost:32379]
+  endpoints:
+    - localhost:2379
+    - localhost:22379
+    - localhost:32379
+

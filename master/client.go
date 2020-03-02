@@ -56,8 +56,19 @@ func (c *GRPCClient) Restart(*tsgrpc.Request) (*tsgrpc.Response, error) {
 }
 
 //GetMetrics request the metrics
-func (c *GRPCClient) GetMetrics(*tsgrpc.Request) (*tsgrpc.Response, error) {
-	return nil, nil
+func (c *GRPCClient) GetMetrics(req *tsgrpc.Request) (*tsgrpc.Response, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+	defer cancel()
+
+	res, err := c.clnt.GetMetrics(ctx, req)
+	statusCode := status.Code(err)
+
+	if statusCode != codes.OK {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 //Register register to master node
