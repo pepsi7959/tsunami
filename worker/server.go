@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	tshttp "github.com/tsunami/libs"
 	tsgrpc "github.com/tsunami/proto"
@@ -109,9 +110,73 @@ func (s *GRPCServer) Restart(context context.Context, r *tsgrpc.Request) (*tsgrp
 }
 
 //GetMetrics request to metrics
-func (s *GRPCServer) GetMetrics(context context.Context, r *tsgrpc.Request) (*tsgrpc.Response, error) {
+func (s *GRPCServer) GetMetrics(context context.Context, req *tsgrpc.Request) (*tsgrpc.Response, error) {
 	fmt.Println("GetMetrics Received")
-	return nil, nil
+
+	ts := s.Ctrl.services[req.Params.Name]
+
+	if ts == nil {
+		return nil, errors.New("not found service")
+	}
+
+	var avg, min, max float64
+	var numRes, numErr int
+	//data := make(map[string]string)
+
+	for _, w := range ts.workers {
+		numRes += w.GetNumRes()
+		numErr += w.GetNumErr()
+		avg += w.GetAvgRes()
+
+		if w.GetMaxRes() > max {
+			max = w.GetMaxRes()
+		}
+
+		if min == 0.0 || w.GetMinRes() < min {
+			min = w.GetMinRes()
+		}
+	}
+
+	workers := len(ts.workers)
+	avg = avg / float64(workers)
+	// data["name"] = ts.conf.Name
+	// data["workers_count"] = fmt.Sprintf("%d", workers)
+	// data["errors_count"] = fmt.Sprintf("%d", numErr)
+	// data["avg"] = fmt.Sprintf("%f", avg)
+	// data["min"] = fmt.Sprintf("%f", min)
+	// data["max"] = fmt.Sprintf("%f", max)
+	// data["elaped_time"] = fmt.Sprintf("%f", time.Since(ts.start).Seconds())
+	// data["requests_count"] = fmt.Sprintf("%f", float64(numRes))
+	// data["rps"] = fmt.Sprintf("%f", float64(numRes)/time.Since(ts.start).Seconds())
+
+	jsonStruct := tshttp.Metric{
+		Name:         ts.conf.Name,
+		WorkerCount:  workers,
+		ErrorCount:   numErr,
+		Avg:          avg,
+		Min:          min,
+		Max:          max,
+		ElapedTime:   time.Since(ts.start).Seconds(),
+		RequestCount: numRes,
+		Rps:          (float64(numRes) / time.Since(ts.start).Seconds()),
+	}
+
+	JSONData, err := json.Marshal(&jsonStruct)
+
+	fmt.Printf("%v \n", jsonStruct)
+	fmt.Printf("%v \n", string(JSONData))
+
+	if err != nil {
+		fmt.Println("error marshal: " + err.Error())
+		return nil, err
+	}
+
+	resp := tsgrpc.Response{
+		ErrorCode: 0,
+		Data:      string(JSONData),
+	}
+
+	return &resp, nil
 }
 
 //Register request to metrics

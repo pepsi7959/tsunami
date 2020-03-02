@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,6 +10,20 @@ import (
 
 	tshttp "github.com/tsunami/libs"
 )
+
+func metricxToSlice(m *tshttp.Metric) *map[string]string {
+	data := make(map[string]string)
+	data["name"] = m.Name
+	data["avg"] = fmt.Sprintf("%f", m.Avg)
+	data["min"] = fmt.Sprintf("%f", m.Min)
+	data["max"] = fmt.Sprintf("%f", m.Max)
+	data["error_count"] = fmt.Sprintf("%d", m.ErrorCount)
+	data["workerCount"] = fmt.Sprintf("%d", m.WorkerCount)
+	data["ElapedTime"] = fmt.Sprintf("%f", m.ElapedTime)
+	data["RequestCount"] = fmt.Sprintf("%d", m.RequestCount)
+	data["rps"] = fmt.Sprintf("%f", m.Rps)
+	return &data
+}
 
 func getJob(req *tshttp.Request) Job {
 
@@ -248,7 +263,84 @@ func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 
 // GetMetrics get all worker information
 func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
-	tshttp.WriteSuccess(&w, nil, nil)
+	var req tshttp.Request
+
+	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+
+	err := tshttp.Decoder(w, r, &req)
+
+	if err != nil {
+		fmt.Printf(err.Error())
+		return
+	}
+
+	fmt.Println("cmd: ", req.Cmd)
+	fmt.Println("Name: ", req.Conf.Name)
+	fmt.Println("Url: ", req.Conf.URL)
+	fmt.Println("Host: ", req.Conf.Host)
+	fmt.Println("Concurrence: ", req.Conf.Concurrence)
+	fmt.Println("Method: ", req.Conf.Method)
+	fmt.Println("Headers ", req.Conf.Headers)
+	fmt.Println("Body: ", req.Conf.Body)
+
+	if oc.jobToWorkers[req.Conf.Name] == nil {
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 404, Message: req.Conf.Name + " not running"})
+		return
+	}
+
+	var num int
+	allMetrics := tshttp.Metric{}
+
+	for _, workerLists := range oc.jobToWorkers[req.Conf.Name] {
+		num++
+		fmt.Println("get metrics from " + workerLists.worker.name)
+		grpcReq := tsgrpc.Request{
+			Command: tsgrpc.Request_GET_METRICES,
+			Params: &tsgrpc.Request_Params{
+				Name:   req.Conf.Name,
+				Url:    req.Conf.URL,
+				Method: tsgrpc.Request_GET,
+				Host:   req.Conf.Host,
+				Body:   req.Conf.Body,
+			},
+		}
+		resp, err := workerLists.worker.gRPCClient.GetMetrics(&grpcReq)
+
+		if err != nil {
+			tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: err.Error()})
+			return
+		}
+
+		metric := tshttp.Metric{}
+
+		err = json.Unmarshal([]byte(resp.GetData()), &metric)
+
+		if err != nil {
+			tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: err.Error()})
+			return
+		}
+
+		if metric.Max > allMetrics.Max {
+			allMetrics.Max = metric.Max
+		}
+
+		if allMetrics.Min == 0.0 || metric.Min < allMetrics.Min {
+			allMetrics.Min = metric.Min
+		}
+
+		allMetrics.Avg += metric.Avg
+		allMetrics.ElapedTime += metric.ElapedTime
+		allMetrics.ErrorCount += metric.ErrorCount
+		allMetrics.WorkerCount += metric.WorkerCount
+		allMetrics.RequestCount += metric.RequestCount
+		fmt.Println(resp.GetData())
+	}
+	allMetrics.Name = req.Conf.Name
+	allMetrics.Avg = (allMetrics.Avg / float64(num))
+	allMetrics.ElapedTime = (allMetrics.ElapedTime / float64(num))
+	allMetrics.Rps = (float64(allMetrics.RequestCount) / float64(num))
+
+	tshttp.WriteSuccess(&w, metricxToSlice(&allMetrics), nil)
 }
 
 // Register get all worker information
