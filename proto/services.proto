@@ -41,10 +41,13 @@ message Request{
         string name = 1;
         string url = 2;
         HTTPMethod method = 3;
-        string host = 4;
-        int32 maxConcurrences = 5;
-        repeated HTTPHeader header = 6;
-        string body = 7;
+        string protocol = 4;
+        string host = 5;
+        string port = 6;
+        string path = 7;
+        int32 maxConcurrences = 8;
+        repeated HTTPHeader header = 9;
+        string body = 10;
     }
 
     CommandType command = 1;

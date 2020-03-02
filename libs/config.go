@@ -4,6 +4,7 @@ package tshttp
 type Conf struct {
 	Name        string
 	URL         string
+	Protocol    string
 	Host        string
 	Port        string
 	Path        string

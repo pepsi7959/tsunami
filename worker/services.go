@@ -65,7 +65,10 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("cmd: ", req.Cmd)
 	fmt.Println("Name: ", req.Conf.Name)
 	fmt.Println("Url: ", req.Conf.URL)
+	fmt.Println("Protocol: ", req.Conf.Protocol)
 	fmt.Println("Host: ", req.Conf.Host)
+	fmt.Println("Post: ", req.Conf.Port)
+	fmt.Println("Path: ", req.Conf.Path)
 	fmt.Println("Concurrence: ", req.Conf.Concurrence)
 	fmt.Println("Method: ", req.Conf.Method)
 	fmt.Println("Headers ", req.Conf.Headers)
@@ -78,7 +81,10 @@ func (ctrl *TSControl) CmdStart(w http.ResponseWriter, r *http.Request) {
 	tsConf := tshttp.Conf{
 		Name:        req.Conf.Name,
 		URL:         req.Conf.URL,
+		Protocol:    req.Conf.Protocol,
 		Host:        req.Conf.Host,
+		Port:        req.Conf.Port,
+		Path:        req.Conf.Path,
 		Method:      req.Conf.Method,
 		Headers:     req.Conf.Headers,
 		Body:        req.Conf.Body,

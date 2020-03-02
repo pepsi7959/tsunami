@@ -34,8 +34,15 @@ type Worker struct {
 }
 
 func (w *Worker) url() string {
+
+	protocol := "http"
+
+	if w.conf.Protocol == "http" || w.conf.Protocol == "https" {
+		protocol = w.conf.Protocol
+	}
 	if w.conf.URL == "" {
-		return fmt.Sprintf("http://%s:%s%s", w.conf.Host, w.conf.Port, w.conf.Path)
+		url := fmt.Sprintf("%s://%s:%s%s", protocol, w.conf.Host, w.conf.Port, w.conf.Path)
+		return url
 	}
 	return w.conf.URL
 }
@@ -119,7 +126,7 @@ func (w *Worker) do() {
 	err := w.client.Do(req, resp)
 	if err != nil {
 		w.UpdateErr()
-		fmt.Println(err)
+		fmt.Println("error client do: " + err.Error())
 	} else {
 		code := resp.StatusCode()
 		if code != 200 {
