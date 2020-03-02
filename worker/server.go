@@ -45,7 +45,10 @@ func (s *GRPCServer) Start(context context.Context, req *tsgrpc.Request) (*tsgrp
 	tsConf := tshttp.Conf{
 		Name:        req.Params.Name,
 		URL:         req.Params.Url,
+		Protocol:    req.Params.Protocol,
 		Host:        req.Params.Host,
+		Port:        req.Params.Port,
+		Path:        req.Params.Path,
 		Method:      methodToString(req.Params.Method),
 		Body:        req.Params.Body,
 		Concurrence: int(req.Params.MaxConcurrences),

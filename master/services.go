@@ -30,7 +30,10 @@ func getJob(req *tshttp.Request) Job {
 	conf := tshttp.Conf{
 		Name:        req.Conf.Name,
 		URL:         req.Conf.URL,
+		Protocol:    req.Conf.Protocol,
 		Host:        req.Conf.Host,
+		Port:        req.Conf.Port,
+		Path:        req.Conf.Path,
 		Method:      req.Conf.Method,
 		Headers:     req.Conf.Headers,
 		Body:        req.Conf.Body,
@@ -55,7 +58,10 @@ func (oc *Ocean) JobMatching(job *Job) error {
 			Name:            job.conf.Name,
 			Url:             job.conf.URL,
 			Method:          tsgrpc.Request_GET,
+			Protocol:        job.conf.Protocol,
 			Host:            job.conf.Host,
+			Port:            job.conf.Port,
+			Path:            job.conf.Path,
 			MaxConcurrences: int32(job.conf.MaxConns),
 			Body:            job.conf.Body,
 		},
@@ -191,7 +197,10 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("cmd: ", req.Cmd)
 	fmt.Println("Name: ", req.Conf.Name)
 	fmt.Println("Url: ", req.Conf.URL)
+	fmt.Println("Protocol: ", req.Conf.Protocol)
 	fmt.Println("Host: ", req.Conf.Host)
+	fmt.Println("Post: ", req.Conf.Port)
+	fmt.Println("Path: ", req.Conf.Path)
 	fmt.Println("Concurrence: ", req.Conf.Concurrence)
 	fmt.Println("Method: ", req.Conf.Method)
 	fmt.Println("Headers ", req.Conf.Headers)

@@ -100,10 +100,35 @@ func (ts *Tsunami) Init(maxQueues int) {
 	ts.logger = log.New(&ts.buf, "Tsunami", log.Lshortfile)
 	ts.jobs = make(chan Job, ts.maxQueues)
 
-	c := &fasthttp.HostClient{Addr: ts.conf.Host,
+	isTLS := false
+	var host string
+
+	if ts.conf.URL != "" {
+		var u fasthttp.URI
+		u.Parse(nil, []byte(ts.conf.URL))
+		if string(u.Scheme()) == "https" {
+			host = string(u.Host()) + ":443"
+			isTLS = true
+		} else {
+			if ts.conf.Port != "" {
+				host = string(u.Host()) + ":" + ts.conf.Port
+			} else {
+				host = string(u.Host()) + ":80"
+			}
+		}
+
+	} else {
+		if ts.conf.Protocol == "https" {
+			isTLS = true
+		}
+		host = ts.conf.Host + ":" + ts.conf.Port
+	}
+
+	c := &fasthttp.HostClient{Addr: host,
 		MaxConns:     ts.conf.MaxConns,
 		ReadTimeout:  time.Second * 30,
 		WriteTimeout: time.Second * 30,
+		IsTLS:        isTLS,
 		Dial:         func(addr string) (net.Conn, error) { return fasthttp.DialTimeout(addr, time.Second*60) }}
 	for i := 0; i < ts.conf.Concurrence; i++ {
 		worker := Worker{Done: &ts.done, conf: ts.conf, client: c}

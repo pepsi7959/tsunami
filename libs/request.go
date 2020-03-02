@@ -12,6 +12,9 @@ type CmdConf struct {
 	Body        string            `json:"body"`
 	Concurrence int               `json:"concurrence"`
 	Host        string            `json:"host"`
+	Port        string            `json:"port"`
+	Path        string            `json:"path"`
+	Protocol    string            `json:"protocol"`
 }
 
 // Request sturcture
