@@ -347,7 +347,7 @@ func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	allMetrics.Name = req.Conf.Name
 	allMetrics.Avg = (allMetrics.Avg / float64(num))
 	allMetrics.ElapedTime = (allMetrics.ElapedTime / float64(num))
-	allMetrics.Rps = (float64(allMetrics.RequestCount) / float64(num))
+	allMetrics.Rps = (float64(allMetrics.RequestCount) / float64(allMetrics.ElapedTime))
 
 	tshttp.WriteSuccess(&w, metricxToSlice(&allMetrics), nil)
 }
