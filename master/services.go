@@ -185,7 +185,13 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 
 	var req tshttp.Request
 
-	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	origin := r.Header.Get("origin")
+
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	}
 
 	err := tshttp.Decoder(w, r, &req)
 
@@ -237,7 +243,13 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 	var req tshttp.Request
 
-	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	origin := r.Header.Get("origin")
+
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	}
 
 	err := tshttp.Decoder(w, r, &req)
 
@@ -274,7 +286,13 @@ func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	var req tshttp.Request
 
-	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	origin := r.Header.Get("origin")
+
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	}
 
 	err := tshttp.Decoder(w, r, &req)
 
@@ -378,7 +396,13 @@ func (oc *Ocean) Monitoring() {
 func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
 	var req tshttp.Request
 
-	w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	origin := r.Header.Get("origin")
+
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	}
 
 	err := tshttp.Decoder(w, r, &req)
 
