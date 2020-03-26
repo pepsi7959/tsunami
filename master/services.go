@@ -183,6 +183,11 @@ func (oc *Ocean) destroy(job *Job) error {
 // Start begin calling worker to generate load
 func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+
 	var req tshttp.Request
 
 	origin := r.Header.Get("Origin")
@@ -241,6 +246,12 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 
 // Stop stop generating load to target
 func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+
 	var req tshttp.Request
 
 	origin := r.Header.Get("Origin")
@@ -284,6 +295,12 @@ func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 
 // GetMetrics get all worker information
 func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+
 	var req tshttp.Request
 
 	origin := r.Header.Get("Origin")
@@ -394,6 +411,12 @@ func (oc *Ocean) Monitoring() {
 
 // GetInfo master configuration
 func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+
 	var req tshttp.Request
 
 	origin := r.Header.Get("Origin")
@@ -436,4 +459,22 @@ func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
 
 	tshttp.WriteSuccess(&w, &data, nil)
 
+}
+
+// Options support preflight
+func (oc *Ocean) Options(w http.ResponseWriter, r *http.Request) {
+
+	origin := r.Header.Get("Origin")
+
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	}
+
+	w.Header().Set("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Content-Length, X-Requested-With, userid, token")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+	tshttp.WriteSuccess(&w, nil, nil)
 }
