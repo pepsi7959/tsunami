@@ -1261,6 +1261,7 @@ function buildReportHTML(name, d, target, sample){
 
 /* ---------- verbose: last request / response ---------- */
 function hdrLines(o){ return Object.entries(o||{}).map(([k,v])=>k+': '+v).join('\n'); }
+let sampleSeen={name:'',ts:0,stale:0};   // tracks whether the verbose sample is still advancing
 async function loadSample(name){
   const card=$('sampleCard');
   try{
@@ -1270,6 +1271,14 @@ async function loadSample(name){
     if(!arr.length){ card.classList.add('hidden'); return; }
     arr.sort((a,b)=>(b.ts||0)-(a.ts||0));   // most recent across workers
     const s=arr[0];
+    // The ocean keeps the last sample cached even after a job stops or is
+    // restarted without verbose. Only show the panel while the sample is still
+    // being refreshed (a live verbose job updates it every report interval);
+    // if the timestamp stops advancing, the job isn't recording -> hide.
+    if(name!==sampleSeen.name){ sampleSeen={name,ts:0,stale:0}; }
+    if(s.ts && s.ts!==sampleSeen.ts){ sampleSeen.ts=s.ts; sampleSeen.stale=0; }
+    else { sampleSeen.stale++; }
+    if(sampleSeen.stale>=2){ card.classList.add('hidden'); return; }
     card.classList.remove('hidden');
     const when = s.ts ? new Date(s.ts).toLocaleTimeString() : '';
     $('sampleMeta').textContent = `— ${s.worker||''} · ${when} · ${(s.latencyMs||0).toFixed(1)} ms`;
