@@ -1,0 +1,16 @@
+.git
+.gitignore
+images/
+scripts/
+*.md
+LICENSE
+.vscode-upload.json
+
+# stray committed Mach-O binary — must never enter the build context/image
+worker/config
+
+# locally built binaries
+ocean
+tsunami
+master/ocean
+worker/tsunami

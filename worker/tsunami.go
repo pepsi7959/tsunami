@@ -18,7 +18,7 @@ import (
 	tshttp "github.com/tsunami/libs"
 	tsregistry "github.com/tsunami/registry"
 	"github.com/valyala/fasthttp"
-	clientv3 "go.etcd.io/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // APIVersion is prefix url of api version
@@ -316,7 +316,7 @@ func StartApp(service string, ctrl *TSControl, conf tshttp.Conf) {
 
 	//Start Api Service
 	app.apiServer = &tshttp.App{}
-	app.apiServer.Init("8091")
+	app.apiServer.Init(":8091")
 	app.apiServer.AddAPI(APIVersion+"/metrics", app.GetMetrics)
 	app.apiServer.Run()
 

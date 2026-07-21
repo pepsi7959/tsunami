@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
-	clientv3 "go.etcd.io/etcd/clientv3"
+	rpctypes "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 //EtcdClient is client structure

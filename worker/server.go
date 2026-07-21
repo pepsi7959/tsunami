@@ -15,6 +15,7 @@ import (
 
 //GRPCServer server for gRPC connecion
 type GRPCServer struct {
+	tsgrpc.UnimplementedTSControlServer
 	Endpoint   string
 	Transport  net.Listener
 	GrpcServer *grpc.Server
@@ -54,25 +55,33 @@ func (s *GRPCServer) Start(context context.Context, req *tsgrpc.Request) (*tsgrp
 		Concurrence: int(req.Params.MaxConcurrences),
 	}
 
-	if s.Ctrl.services[tsConf.Name] == nil {
-		go StartApp(tsConf.Name, s.Ctrl, tsConf)
-		data := struct {
-			url  string
-			name string
-		}{
-			url:  "http://" + tshttp.GetIP().String() + ":8091" + APIVersion,
-			name: tsConf.Name,
+	// If a service with this name is already running here (e.g. a leftover after
+	// the master restarted and lost its state), replace it instead of hard-failing.
+	// Otherwise the name stays permanently unusable until the worker is restarted.
+	if existing := s.Ctrl.services[tsConf.Name]; existing != nil {
+		fmt.Println("Start: replacing existing service ", tsConf.Name)
+		existing.Stop()
+		if existing.apiServer != nil {
+			existing.apiServer.Stop()
 		}
-		jdata, _ := json.Marshal(data)
-
-		res := tsgrpc.Response{
-			ErrorCode: 0,
-			Data:      string(jdata),
-		}
-		return &res, nil
+		delete(s.Ctrl.services, tsConf.Name)
 	}
 
-	return nil, errors.New(tsConf.Name + " already exist")
+	go StartApp(tsConf.Name, s.Ctrl, tsConf)
+	data := struct {
+		url  string
+		name string
+	}{
+		url:  "http://" + tshttp.GetIP().String() + ":8091" + APIVersion,
+		name: tsConf.Name,
+	}
+	jdata, _ := json.Marshal(data)
+
+	res := tsgrpc.Response{
+		ErrorCode: 0,
+		Data:      string(jdata),
+	}
+	return &res, nil
 }
 
 //Stop send stop command

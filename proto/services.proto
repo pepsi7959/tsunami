@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tsgrpc;
 
+option go_package = "github.com/tsunami/proto;tsgrpc";
+
 import "google/protobuf/timestamp.proto";
 
 

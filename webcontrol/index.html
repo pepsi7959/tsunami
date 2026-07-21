@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tsunami — Web Control</title>
+<style>
+  /* --- reference dark palette (validated) --- */
+  :root {
+    color-scheme: dark;
+    --plane:      #0d0d0d;
+    --surface:    #1a1a19;
+    --surface-2:  #232322;
+    --ink:        #ffffff;
+    --ink-2:      #c3c2b7;
+    --muted:      #898781;
+    --grid:       #2c2c2a;
+    --axis:       #383835;
+    --border:     rgba(255,255,255,0.10);
+    --s-blue:     #3987e5;
+    --s-aqua:     #199e70;
+    --s-crit:     #d03b3b;
+    --good:       #0ca30c;
+    --radius: 12px;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--sans); background: var(--plane); color: var(--ink); }
+  header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px; background: var(--surface);
+  }
+  header .wave { font-size: 22px; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .4px; font-weight: 650; }
+  header .master { margin-left: auto; font-size: 13px; color: var(--muted); display:flex; align-items:center; gap:10px; }
+  header .master input {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
+    padding: 6px 9px; border-radius: 7px; width: 200px; font-size: 13px;
+  }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--muted); margin-right:6px; }
+  .dot.ok { background: var(--good); } .dot.bad { background: var(--s-crit); }
+
+  /* app shell: sidebar + content */
+  .shell { display:flex; align-items:stretch; min-height: calc(100vh - 61px); }
+  .sidebar { width:210px; flex-shrink:0; border-right:1px solid var(--border); background:var(--surface);
+    padding:16px 10px; display:flex; flex-direction:column; gap:4px; }
+  .navi { display:flex; align-items:center; gap:11px; padding:11px 13px; border-radius:9px; color:var(--muted);
+    font-size:14px; font-weight:600; cursor:pointer; user-select:none; }
+  .navi:hover { background:var(--surface-2); color:var(--ink-2); }
+  .navi.active { background:var(--surface-2); color:var(--ink); }
+  .navi .ico { font-size:16px; width:18px; text-align:center; }
+  .sidebar .sep { flex:1; }
+  .sidebar .foot { font-size:11px; color:var(--muted); padding:8px 13px; }
+  .content { flex:1; min-width:0; }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px; display: grid; gap: 18px; }
+  main.page.hidden { display:none; }
+  .page-title { font-size:20px; font-weight:680; margin:2px 0 2px; }
+  .page-sub { color:var(--muted); font-size:13px; margin-top:-6px; }
+  .grid2 { display: grid; grid-template-columns: 320px 1fr; gap: 18px; }
+  @media (max-width: 820px){ .grid2 { grid-template-columns: 1fr; } }
+
+  /* connection / worker rows */
+  .conn { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border);
+    border-radius:10px; background:var(--surface-2); margin-bottom:10px; }
+  .conn.active { border-color: rgba(57,135,229,.5); }
+  .conn .meta { flex:1; min-width:0; }
+  .conn .nm { font-weight:650; }
+  .conn .u { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .badge { font-size:11px; font-weight:650; padding:3px 8px; border-radius:20px; }
+  .badge.on { background:rgba(12,163,12,.18); color:#3fb950; }
+  .badge.off{ background:var(--surface); color:var(--muted); }
+  .mini { padding:7px 11px; font-size:13px; margin:0; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); font-weight: 650; }
+  label { display:block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input, select {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
+    padding: 9px 10px; border-radius: 8px; font-size: 14px;
+  }
+  .row { display:flex; gap: 10px; } .row > div { flex: 1; }
+  button {
+    cursor: pointer; border: none; border-radius: 8px; padding: 10px 15px;
+    font-size: 14px; font-weight: 600; color: #fff; margin-top: 14px;
+  }
+  button.start { background: var(--s-aqua); } button.stop { background: var(--s-crit); }
+  button.ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2); }
+  button:hover { filter: brightness(1.1); }  button:disabled { opacity:.45; cursor:not-allowed; }
+  .info-grid { display:grid; grid-template-columns: 1fr auto; gap: 7px 16px; font-size: 13px; }
+  .info-grid .k { color: var(--muted); } .info-grid .v { text-align:right; font-variant-numeric: tabular-nums; }
+
+  .toolbar { display:flex; align-items:flex-end; gap: 12px; flex-wrap: wrap; }
+  .toolbar .grow { flex: 1; min-width: 160px; }
+  .toggle { display:flex; align-items:center; gap:7px; font-size:13px; color: var(--ink-2); margin: 14px 0 0; cursor:pointer; }
+  .toggle input { width:auto; }
+  .spacer { flex: 1; }
+
+  .kpis { display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 14px; }
+  .kpis.sub { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 820px){ .kpis, .kpis.sub { grid-template-columns: 1fr 1fr; } }
+  .tile { background: var(--surface); border:1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .tile .k { font-size: 11px; text-transform: uppercase; letter-spacing:.6px; color: var(--muted); }
+  .tile .v { font-size: 30px; font-weight: 680; margin-top: 4px; line-height: 1.1; }
+  .tile .u { font-size: 14px; color: var(--muted); font-weight: 500; margin-left: 4px; }
+  .tile.hero .v { font-size: 46px; }
+  .tile.hero { border-color: rgba(57,135,229,.4); }
+  .tile.small .v { font-size: 22px; }
+  .tile .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .swatch { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+
+  .charts { display:grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 820px){ .charts { grid-template-columns: 1fr; } }
+  .chart-head { display:flex; align-items:baseline; gap:10px; margin-bottom: 6px; }
+  .chart-head .title { font-size: 14px; font-weight: 620; }
+  .chart-head .cap { font-size: 12px; color: var(--muted); }
+  .chart-wrap { position: relative; }
+  svg.chart { display:block; width: 100%; height: 220px; }
+  svg.chart text { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
+  svg.chart .axis-label { font-variant-numeric: tabular-nums; }
+  .tt {
+    position:absolute; pointer-events:none; z-index:5; background: var(--surface-2);
+    border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:12px;
+    color: var(--ink-2); white-space:nowrap; transform: translate(-50%, -110%); opacity:0; transition:opacity .08s;
+    box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+  .tt .tt-t { color: var(--muted); margin-bottom:4px; }
+  .tt .tt-v { color: var(--ink); font-weight:680; font-variant-numeric: tabular-nums; font-size:14px; }
+  .tt .tt-r { color: var(--muted); margin-top:3px; }
+  .empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; }
+
+  table { width:100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align:right; padding: 6px 10px; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align:left; }
+  th { color: var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.5px; font-size:11px; }
+  .hidden { display:none; }
+  details summary { cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.9px; color:var(--muted); font-weight:650; list-style:none; }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before { content:'▸ '; }
+  details[open] summary::before { content:'▾ '; }
+  details[open] summary { margin-bottom:12px; }
+  pre#log { background: var(--plane); border:1px solid var(--border); border-radius:8px; padding:9px;
+    font-size:11px; color:var(--muted); overflow:auto; max-height:140px; margin:0; }
+
+  /* topology visualizer */
+  svg.topo { display:block; width:100%; height:400px; }
+  svg.topo text { fill: var(--ink-2); font-family: var(--sans); }
+  .topo-node { cursor:pointer; }
+  .topo-node circle { transition: filter .15s; }
+  .topo-node:hover circle { filter: brightness(1.25); }
+  .legend { display:flex; gap:16px; margin-top:2px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+  .legend .li { display:flex; align-items:center; gap:6px; }
+  .legend .sw { width:10px; height:10px; border-radius:50%; }
+
+  /* toast notifications */
+  #toasts { position:fixed; top:16px; right:16px; z-index:50; display:flex; flex-direction:column; gap:8px; }
+  .toast { min-width:240px; max-width:380px; padding:11px 14px; border-radius:9px; font-size:13px; color:var(--ink);
+    background:var(--surface-2); border:1px solid var(--border); box-shadow:0 8px 24px rgba(0,0,0,.45);
+    opacity:0; transform:translateY(-8px); transition:opacity .2s, transform .2s; }
+  .toast.show { opacity:1; transform:none; }
+  .toast .th { font-weight:680; margin-bottom:2px; }
+  .toast.warn  { border-left:3px solid #fab219; }
+  .toast.error { border-left:3px solid var(--s-crit); }
+  .toast.ok    { border-left:3px solid var(--good); }
+</style>
+</head>
+<body data-palette="#3987e5,#199e70,#d03b3b">
+<header>
+  <span class="wave">🌊</span>
+  <h1>Tsunami — Web Control</h1>
+  <div class="master">
+    <span id="conn"><span class="dot"></span>connecting…</span>
+    <span>Master: <input id="master" value="http://localhost:8080" /></span>
+  </div>
+</header>
+
+<div id="toasts"></div>
+
+<div class="shell">
+  <nav class="sidebar">
+    <div class="navi active" data-page="dashboard"><span class="ico">📊</span> Dashboard</div>
+    <div class="navi" data-page="ocean"><span class="ico">🌊</span> Ocean</div>
+    <div class="navi" data-page="workers"><span class="ico">🖥️</span> Workers</div>
+    <div class="sep"></div>
+    <div class="foot">Tsunami Web Control</div>
+  </nav>
+  <div class="content">
+
+<main id="page-dashboard" class="page">
+  <div class="grid2">
+    <div class="card">
+      <h2>Cluster</h2>
+      <div id="infoBox" class="info-grid"><div class="k">workers</div><div class="v">—</div></div>
+      <button class="ghost" style="width:100%" onclick="loadInfo()">Refresh</button>
+    </div>
+    <div class="card">
+      <h2>Load test</h2>
+      <div class="row">
+        <div><label>Test name</label><input id="name" value="t1" /></div>
+        <div style="flex:2"><label>Target URL</label><input id="url" value="https://nineplusplus.com" /></div>
+      </div>
+      <div class="row" style="margin-top:2px">
+        <div><label>Method</label>
+          <select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
+        </div>
+        <div><label>Concurrence</label><input id="concurrence" type="number" value="10" min="1" /></div>
+        <div style="display:flex; gap:10px; align-items:flex-end">
+          <button class="start" style="flex:1" onclick="startTest()">▶ Start</button>
+          <button class="stop"  style="flex:1" onclick="stopTest()">■ Stop</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="grow"><label>Watching test</label><select id="mname" onchange="onWatchChange()"><option value="">— no running tests —</option></select></div>
+      <button class="ghost" onclick="loadMetrics()">Fetch now</button>
+      <div class="spacer"></div>
+      <label class="toggle"><input type="checkbox" id="autopoll" checked onchange="togglePoll()" /> auto-refresh (2s)</label>
+      <label class="toggle"><input type="checkbox" id="tableview" onchange="toggleTable()" /> table view</label>
+    </div>
+  </div>
+
+  <!-- KPI hero + primary tiles -->
+  <div class="kpis">
+    <div class="tile hero"><div class="k">Throughput</div><div class="v" id="m_rps">—<span class="u">req/s</span></div><div class="sub">instantaneous</div></div>
+    <div class="tile"><div class="k">Total requests</div><div class="v" id="m_req">—</div></div>
+    <div class="tile"><div class="k">Avg latency</div><div class="v" id="m_avg">—<span class="u">ms</span></div></div>
+    <div class="tile"><div class="k"><span class="swatch" style="background:var(--s-crit)"></span>Error rate</div><div class="v" id="m_rate">—<span class="u">%</span></div></div>
+  </div>
+  <!-- secondary tiles -->
+  <div class="kpis sub">
+    <div class="tile small"><div class="k">Min latency</div><div class="v" id="m_min">—<span class="u">ms</span></div></div>
+    <div class="tile small"><div class="k">Max latency</div><div class="v" id="m_max">—<span class="u">ms</span></div></div>
+    <div class="tile small"><div class="k">Workers</div><div class="v" id="m_wrk">—</div></div>
+    <div class="tile small"><div class="k">Elapsed</div><div class="v" id="m_el">—<span class="u">s</span></div></div>
+  </div>
+
+  <!-- live topology -->
+  <div class="card">
+    <div class="chart-head"><span class="title">Live topology</span><span class="cap">ocean → worker → target · animated flow ∝ throughput</span></div>
+    <div class="chart-wrap">
+      <svg class="topo" id="topo"></svg>
+      <div class="tt" id="tt_topo"></div>
+      <div class="empty" id="e_topo">connecting…</div>
+    </div>
+    <div class="legend">
+      <span class="li"><span class="sw" style="background:var(--s-blue)"></span>ocean (master)</span>
+      <span class="li"><span class="sw" style="background:var(--s-aqua)"></span>worker</span>
+      <span class="li"><span class="sw" style="background:#d95926"></span>target</span>
+      <span class="li"><span class="sw" style="background:var(--muted)"></span>control link (gRPC)</span>
+      <span class="li"><span class="sw" style="background:var(--s-blue)"></span>load flow (→ target)</span>
+    </div>
+  </div>
+
+  <!-- charts -->
+  <div class="charts">
+    <div class="card">
+      <div class="chart-head"><span class="title">Throughput</span><span class="cap">requests / second · instantaneous</span></div>
+      <div class="chart-wrap"><svg class="chart" id="c_rps"></svg><div class="tt" id="tt_rps"></div><div class="empty" id="e_rps">waiting for data…</div></div>
+    </div>
+    <div class="card">
+      <div class="chart-head"><span class="title">Latency</span><span class="cap">avg · ms, band = recent range</span></div>
+      <div class="chart-wrap"><svg class="chart" id="c_lat"></svg><div class="tt" id="tt_lat"></div><div class="empty" id="e_lat">waiting for data…</div></div>
+    </div>
+    <div class="card">
+      <div class="chart-head"><span class="title"><span class="swatch" style="background:var(--s-crit)"></span>Error rate</span><span class="cap">% of requests failing · per interval</span></div>
+      <div class="chart-wrap"><svg class="chart" id="c_rate"></svg><div class="tt" id="tt_rate"></div><div class="empty" id="e_rate">waiting for data…</div></div>
+    </div>
+    <div class="card">
+      <div class="chart-head"><span class="title"><span class="swatch" style="background:var(--s-crit)"></span>Errors</span><span class="cap">cumulative failures · count</span></div>
+      <div class="chart-wrap"><svg class="chart" id="c_err"></svg><div class="tt" id="tt_err"></div><div class="empty" id="e_err">waiting for data…</div></div>
+    </div>
+  </div>
+
+  <!-- table view twin -->
+  <div class="card hidden" id="tableCard">
+    <h2>Samples (table view)</h2>
+    <div style="overflow:auto; max-height:340px">
+      <table id="sampleTable"><thead><tr>
+        <th>Elapsed</th><th>Req/s</th><th>Avg ms</th><th>Min ms</th><th>Max ms</th><th>Requests</th><th>Errors</th><th>Err %</th><th>Workers</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <details class="card"><summary>Activity log</summary><pre id="log">ready.</pre></details>
+</main>
+
+<!-- ===================== OCEAN PAGE ===================== -->
+<main id="page-ocean" class="page hidden">
+  <div>
+    <div class="page-title">Ocean connections</div>
+    <div class="page-sub">Manage the master (ocean) endpoints this console talks to. The active one drives the dashboard.</div>
+  </div>
+  <div class="card">
+    <h2>Connections</h2>
+    <div id="connList"></div>
+  </div>
+  <div class="card">
+    <h2>Add / edit connection</h2>
+    <div class="row">
+      <div><label>Name</label><input id="cn_name" placeholder="e.g. production" /></div>
+      <div style="flex:2"><label>Master URL</label><input id="cn_url" placeholder="http://host:8080" /></div>
+      <div style="display:flex;align-items:flex-end"><button class="start" style="width:100%" onclick="saveConn()">Save</button></div>
+    </div>
+    <div class="page-sub" style="margin-top:10px">Editing an existing name updates it; a new name adds a connection.</div>
+  </div>
+</main>
+
+<!-- ===================== WORKERS PAGE ===================== -->
+<main id="page-workers" class="page hidden">
+  <div>
+    <div class="page-title">Workers</div>
+    <div class="page-sub">Workers self-register with this ocean via the registry (etcd). Use Rediscover to pick up newly-registered workers.</div>
+  </div>
+  <div class="card">
+    <div class="toolbar" style="margin-bottom:14px">
+      <h2 style="margin:0">Registered workers (<span id="wk_count">0</span>)</h2>
+      <div class="spacer"></div>
+      <button class="ghost mini" onclick="renderWorkers()">Refresh</button>
+      <button class="start mini" onclick="rediscoverWorkers()">↻ Rediscover</button>
+    </div>
+    <div style="overflow:auto">
+      <table id="workerTable"><thead><tr>
+        <th>Name</th><th>IP</th><th>Endpoint</th><th>Max quota</th><th>Remaining</th><th>Status</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+</main>
+
+  </div><!-- /content -->
+</div><!-- /shell -->
+
+<script>
+const $ = (id) => document.getElementById(id);
+const master = () => $('master').value.replace(/\/+$/, '');
+let pollTimer = null;
+let samples = [];        // {t, rps, avg, min, max, req, err, rate, wrk}
+let prev = null;         // previous raw {req, err, t} for instantaneous deltas
+let watchedName = null;  // the test the chart buffer currently belongs to
+let tick = 0;            // poll counter — used to refresh the running-tests list periodically
+const MAX_SAMPLES = 150;
+const ROLL = 8;          // trailing window (samples) for the latency range band
+
+/* ---------- helpers ---------- */
+function logline(msg, obj){ const t=new Date().toLocaleTimeString(); $('log').textContent = `[${t}] ${msg}`+(obj?'\n'+JSON.stringify(obj,null,2):''); }
+function toast(title, msg, type){
+  const el=document.createElement('div'); el.className='toast '+(type||'info');
+  const h=document.createElement('div'); h.className='th'; h.textContent=title; el.appendChild(h);
+  if(msg){ const b=document.createElement('div'); b.textContent=msg; el.appendChild(b); }
+  $('toasts').appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),250); }, 4500);
+}
+function setConn(ok){ $('conn').innerHTML = `<span class="dot ${ok?'ok':'bad'}"></span>`+(ok?'connected':'unreachable'); }
+function compact(n){ if(n==null||isNaN(n)) return '—'; n=+n;
+  if(Math.abs(n)>=1e6) return (n/1e6).toFixed(2)+'M';
+  if(Math.abs(n)>=1e4) return (n/1e3).toFixed(1)+'K';
+  return n.toLocaleString(undefined,{maximumFractionDigits:0}); }
+function niceMax(v){ if(v<=0) return 1; const p=Math.pow(10,Math.floor(Math.log10(v))); const f=v/p;
+  const n=f<=1?1:f<=2?2:f<=5?5:10; return n*p; }
+function fmtElapsed(t, dec){ t=Math.max(0,t);
+  if(t>=120) return Math.floor(t/60)+':'+String(Math.round(t%60)).padStart(2,'0');
+  return t.toFixed(dec)+'s'; }
+const fmtInt = v=>Math.round(v).toLocaleString();
+const fmtMs  = v=>(v>=100?String(Math.round(v)):v.toFixed(1));
+const fmtPct = v=>(v>=10?String(Math.round(v)):v.toFixed(1))+'%';
+
+/* ---------- API ---------- */
+async function call(path, cmd, conf={}){
+  const res = await fetch(master()+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd,conf})});
+  const j = await res.json(); setConn(true); return j;
+}
+async function loadInfo(quiet){
+  try{ const r=await call('/api/v1/info','info'); const d=r.data||{};
+    const rows=[['name',d.name],['workers',d.workers],['max concurrent',d.max_concurrent],['remaining',d.remaining_Concurrent]];
+    $('infoBox').innerHTML = rows.map(()=>`<div class="k"></div><div class="v"></div>`).join('');
+    [...$('infoBox').children].forEach((el,i)=>{ el.textContent = i%2 ? (rows[i>>1][1] ?? '—') : rows[i>>1][0]; });
+    populateTests(d.jobs);
+    if(d.topology){ try{ renderTopo(JSON.parse(d.topology)); }catch(err){} }
+    if(!quiet) logline('info ok', d);
+  }catch(e){ setConn(false); if(!quiet) logline('info failed: '+e.message); }
+}
+// fill the "watching test" dropdown from the master's list of running tests
+function populateTests(csv){
+  const names=(csv||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const sel=$('mname'), cur=sel.value;
+  sel.innerHTML='';
+  if(names.length===0){
+    const o=document.createElement('option'); o.value=''; o.textContent='— no running tests —'; sel.appendChild(o); return;
+  }
+  names.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
+  sel.value = names.includes(cur) ? cur : names[0];
+}
+function onWatchChange(){ loadMetrics(); }  // loadMetrics resets the buffer when the watched test changes
+async function startTest(){
+  const name=$('name').value.trim();
+  if(!name){ toast('Enter a test name', 'Please give the test a name before starting.', 'warn'); return; }
+
+  // reject duplicate names: notify the user instead of silently starting/replacing
+  await loadInfo(true);   // refresh the running-tests list first
+  const running=[...$('mname').options].map(o=>o.value).filter(Boolean);
+  if(running.includes(name)){
+    toast('Test already running', `A test named “${name}” is already running. Stop it first, or use a different name.`, 'warn');
+    $('mname').value=name; onWatchChange();   // point the watcher at the existing one
+    return;
+  }
+
+  const conf={ name, url:$('url').value.trim(), method:$('method').value, concurrence:parseInt($('concurrence').value,10)||1 };
+  try{
+    const r=await call('/api/v1/start','start',conf);
+    if(r.error && r.error.code){ toast('Start failed', r.error.message, 'error'); logline('start failed', r); return; }
+    logline('start → '+name, r);
+    samples=[]; prev=null; renderAll();
+    await loadInfo(true);             // refresh the dropdown from the master…
+    $('mname').value=name;            // …then watch the test we just started
+    if($('autopoll').checked) startPoll();
+    toast('Test started', `“${name}” is now running against ${conf.url||'the target'}.`, 'ok');
+  }catch(e){ setConn(false); toast('Start failed', e.message, 'error'); logline('start failed: '+e.message); }
+}
+async function stopTest(){
+  const name=$('mname').value.trim();
+  try{ const r=await call('/api/v1/stop','stop',{name}); logline('stop → '+name, r); loadInfo(); }
+  catch(e){ setConn(false); logline('stop failed: '+e.message); }
+}
+async function loadMetrics(){
+  if(tick++ % 5 === 0) loadInfo(true);   // keep the running-tests dropdown fresh (~every 10s)
+  const name=$('mname').value.trim();
+  if(!name) return;                       // nothing selected / no running tests
+  // watched test changed (manual pick or auto-switch after a stop) → start a fresh
+  // buffer so the charts never mix two tests' timelines (was the "distortion" bug)
+  if(name!==watchedName){ watchedName=name; samples=[]; prev=null; renderAll(); }
+  try{
+    const r=await call('/api/v1/metrics','metrics',{name});
+    const d=r.data;
+    if(!d || (r.error && r.error.code)){ logline('metrics: '+((r.error&&r.error.message)||'no data')); return; }
+    const req=+d.RequestCount||0, t=+d.ElapedTime||0, err=+d.error_count||0;
+    let rps=+d.rps||0, rate=0;
+    if(prev && t>prev.t){
+      const dReq=req-prev.req;
+      if(dReq>0){ rps=dReq/(t-prev.t); rate=Math.max(0,(err-prev.err)/dReq*100); }
+    }
+    prev={req,err,t};
+    const s={ t, rps:Math.max(0,rps), avg:+d.avg||0, min:+d.min||0, max:+d.max||0, req, err, rate, wrk:+d.workerCount||0 };
+    samples.push(s); if(samples.length>MAX_SAMPLES) samples.shift();
+    updateTiles(s); renderAll(); if(!$('tableCard').classList.contains('hidden')) renderTable();
+  }catch(e){ setConn(false); logline('metrics failed: '+e.message); }
+}
+function updateTiles(s){
+  $('m_rps').innerHTML  = compact(Math.round(s.rps))+'<span class="u">req/s</span>';
+  $('m_req').textContent = compact(s.req);
+  $('m_avg').innerHTML  = (s.avg?s.avg.toFixed(1):'0')+'<span class="u">ms</span>';
+  $('m_rate').innerHTML = (s.rate>=10?Math.round(s.rate):s.rate.toFixed(2))+'<span class="u">%</span>';
+  $('m_min').innerHTML  = (s.min?s.min.toFixed(1):'0')+'<span class="u">ms</span>';
+  $('m_max').innerHTML  = (s.max?s.max.toFixed(1):'0')+'<span class="u">ms</span>';
+  $('m_wrk').textContent = s.wrk;
+  $('m_el').innerHTML   = Math.round(s.t)+'<span class="u">s</span>';
+}
+
+/* ---------- polling ---------- */
+function startPoll(){ stopPoll(); pollTimer=setInterval(loadMetrics,2000); loadMetrics(); }
+function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+function togglePoll(){ $('autopoll').checked ? startPoll() : stopPoll(); }
+function toggleTable(){ const c=$('tableCard'); if($('tableview').checked){ c.classList.remove('hidden'); renderTable(); } else c.classList.add('hidden'); }
+
+/* ---------- SVG chart renderer ---------- */
+const PAD={l:48,r:14,t:12,b:24};
+const NS='http://www.w3.org/2000/svg';
+const svgEl=(n,a)=>{ const e=document.createElementNS(NS,n); for(const k in a) e.setAttribute(k,a[k]); return e; };
+
+function rollingLoHi(key,win){
+  const lo=[],hi=[];
+  for(let i=0;i<samples.length;i++){
+    let a=Infinity,b=-Infinity;
+    for(let j=Math.max(0,i-win+1);j<=i;j++){ const v=samples[j][key]; if(v<a)a=v; if(v>b)b=v; }
+    lo.push(a); hi.push(b);
+  }
+  return {lo,hi};
+}
+
+function renderChart(cfg){
+  // cfg: {svg,tt,empty,color,valKey,valLabel,yFmt, integer, floorMax, rolling}
+  const svg=$(cfg.svg), tt=$(cfg.tt);
+  const W=svg.clientWidth||svg.parentNode.clientWidth||600, H=svg.clientHeight||220;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  if(samples.length<2){ $(cfg.empty).style.display='flex'; svg.innerHTML=''; return; }
+  $(cfg.empty).style.display='none';
+
+  const roll = cfg.rolling ? rollingLoHi(cfg.valKey, ROLL) : null;
+  const xs=samples.map(s=>s.t);
+  const x0=xs[0], x1=xs[xs.length-1] > x0 ? xs[xs.length-1] : x0+1;
+  const plotW=W-PAD.l-PAD.r, plotH=H-PAD.t-PAD.b;
+  const xOf=t=> PAD.l + (t-x0)/(x1-x0)*plotW;
+
+  // y-max
+  let rawMax=0;
+  for(let i=0;i<samples.length;i++){ rawMax=Math.max(rawMax, roll?roll.hi[i]:samples[i][cfg.valKey]); }
+  let ymax, steps=4;
+  if(cfg.integer){ const m=Math.max(1,Math.ceil(rawMax)); if(m<=5){ ymax=m; steps=m; } else { ymax=niceMax(m); } }
+  else { ymax = rawMax>0 ? niceMax(rawMax*1.15) : (cfg.floorMax||1); }
+  const yOf=v=> PAD.t + plotH - (v/ymax)*plotH;
+
+  const frag=document.createDocumentFragment();
+
+  // gridlines + deduped y labels
+  let lastY=null;
+  for(let i=0;i<=steps;i++){
+    const v=ymax*i/steps, y=yOf(v);
+    frag.appendChild(svgEl('line',{x1:PAD.l,x2:W-PAD.r,y1:y,y2:y,stroke:'var(--grid)','stroke-width':1}));
+    const label=cfg.yFmt(v);
+    if(label!==lastY){ const tx=svgEl('text',{x:PAD.l-8,y:y+3,'text-anchor':'end',class:'axis-label'}); tx.textContent=label; frag.appendChild(tx); lastY=label; }
+  }
+  frag.appendChild(svgEl('line',{x1:PAD.l,x2:W-PAD.r,y1:yOf(0),y2:yOf(0),stroke:'var(--axis)','stroke-width':1}));
+
+  // x labels (start/mid/end), adaptive precision + dedupe
+  const span=x1-x0, xdec = span>=20?0 : span>=4?1 : 2;
+  let lastX=null;
+  [0,.5,1].forEach(f=>{ const t=x0+span*f; const label=fmtElapsed(t,xdec);
+    if(label===lastX) return; lastX=label;
+    const tx=svgEl('text',{x:xOf(t),y:H-6,'text-anchor':f===0?'start':f===1?'end':'middle',class:'axis-label'}); tx.textContent=label; frag.appendChild(tx); });
+
+  // rolling range band (latency)
+  if(roll){
+    let up='', dn='';
+    samples.forEach((s,i)=>{ up+=(i?'L':'M')+xOf(s.t)+' '+yOf(roll.hi[i])+' '; });
+    for(let i=samples.length-1;i>=0;i--){ dn+='L'+xOf(samples[i].t)+' '+yOf(roll.lo[i])+' '; }
+    frag.appendChild(svgEl('path',{d:up+dn+'Z', fill:cfg.color, 'fill-opacity':0.12, stroke:'none'}));
+  }
+
+  // area wash + line
+  const gid=cfg.svg+'-grad';
+  const grad=svgEl('linearGradient',{id:gid,x1:0,y1:0,x2:0,y2:1});
+  grad.appendChild(svgEl('stop',{offset:'0%','stop-color':cfg.color,'stop-opacity':0.16}));
+  grad.appendChild(svgEl('stop',{offset:'100%','stop-color':cfg.color,'stop-opacity':0}));
+  const defs=svgEl('defs',{}); defs.appendChild(grad); frag.appendChild(defs);
+
+  let line='';
+  samples.forEach((s,i)=>{ line+=(i?'L':'M')+xOf(s.t)+' '+yOf(s[cfg.valKey])+' '; });
+  if(!roll) frag.appendChild(svgEl('path',{d:line+`L${xOf(x1)} ${yOf(0)} L${xOf(x0)} ${yOf(0)} Z`, fill:`url(#${gid})`, stroke:'none'}));
+  frag.appendChild(svgEl('path',{d:line, fill:'none', stroke:cfg.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+
+  // end dot with surface ring
+  const last=samples[samples.length-1];
+  frag.appendChild(svgEl('circle',{cx:xOf(last.t),cy:yOf(last[cfg.valKey]),r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2}));
+
+  // crosshair + hover marker
+  const cross=svgEl('line',{x1:0,x2:0,y1:PAD.t,y2:PAD.t+plotH,stroke:'var(--muted)','stroke-width':1,'stroke-opacity':0.6,visibility:'hidden'});
+  const hov=svgEl('circle',{r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2,visibility:'hidden'});
+  frag.appendChild(cross); frag.appendChild(hov);
+
+  svg.innerHTML=''; svg.appendChild(frag);
+
+  svg.onpointermove=(ev)=>{
+    const rect=svg.getBoundingClientRect();
+    const px=(ev.clientX-rect.left)*(W/rect.width);
+    let best=0,bd=1e9; samples.forEach((s,i)=>{ const d=Math.abs(xOf(s.t)-px); if(d<bd){bd=d;best=i;} });
+    const s=samples[best], cx=xOf(s.t), cy=yOf(s[cfg.valKey]);
+    cross.setAttribute('x1',cx); cross.setAttribute('x2',cx); cross.setAttribute('visibility','visible');
+    hov.setAttribute('cx',cx); hov.setAttribute('cy',cy); hov.setAttribute('visibility','visible');
+    tt.style.opacity=1;
+    tt.style.left=(cx/W*rect.width)+'px';
+    tt.style.top=(cy/H*rect.height)+'px';
+    tt.innerHTML=`<div class="tt-t"></div><div class="tt-v"></div><div class="tt-r"></div>`;
+    tt.children[0].textContent='t + '+fmtElapsed(s.t,0);
+    tt.children[1].textContent=cfg.valLabel+': '+cfg.yFmt(s[cfg.valKey]);
+    tt.children[2].textContent = roll ? `recent range ${cfg.yFmt(roll.lo[best])}–${cfg.yFmt(roll.hi[best])}` : '';
+  };
+  svg.onpointerleave=()=>{ cross.setAttribute('visibility','hidden'); hov.setAttribute('visibility','hidden'); tt.style.opacity=0; };
+}
+
+function renderAll(){
+  renderChart({svg:'c_rps', tt:'tt_rps', empty:'e_rps', color:'var(--s-blue)', valKey:'rps',  valLabel:'req/s',      yFmt:fmtInt, integer:true});
+  renderChart({svg:'c_lat', tt:'tt_lat', empty:'e_lat', color:'var(--s-aqua)', valKey:'avg',  valLabel:'avg',        yFmt:fmtMs,  rolling:true});
+  renderChart({svg:'c_rate',tt:'tt_rate',empty:'e_rate',color:'var(--s-crit)', valKey:'rate', valLabel:'error rate', yFmt:fmtPct, floorMax:1});
+  renderChart({svg:'c_err', tt:'tt_err', empty:'e_err', color:'var(--s-crit)', valKey:'err',  valLabel:'errors',     yFmt:fmtInt, integer:true});
+}
+function renderTable(){
+  const tb=$('sampleTable').querySelector('tbody');
+  tb.innerHTML='';
+  for(let i=samples.length-1;i>=0;i--){ const s=samples[i];
+    const tr=document.createElement('tr');
+    [fmtElapsed(s.t,0), Math.round(s.rps), s.avg.toFixed(1), s.min.toFixed(1), s.max.toFixed(1),
+     s.req.toLocaleString(), s.err, s.rate.toFixed(2)+'%', s.wrk]
+      .forEach((v)=>{ const td=document.createElement('td'); td.textContent=v; tr.appendChild(td); });
+    tb.appendChild(tr);
+  }
+}
+
+/* ---------- topology visualizer ---------- */
+const TW=1000, TH=400;
+let topoSig='';               // structural signature — rebuild only when it changes
+let topoLoad=[], topoCtrl=[]; // edges with their particle dots
+let topoRAF=null, topoLastTs=0;
+const dohCache={};
+
+function shortUrl(u){ try{ const x=new URL(u); return x.hostname+(x.pathname!=='/'?x.pathname:''); }catch(e){ return u; } }
+function topoColor(k){ return k==='master'?'var(--s-blue)': k==='worker'?'var(--s-aqua)':'#d95926'; }
+
+async function resolveTargetIP(url, labelEl){
+  let host=url; try{ host=new URL(url).hostname; }catch(e){}
+  if(dohCache[host]){ labelEl.textContent=dohCache[host]; return; }
+  try{
+    const r=await fetch('https://dns.google/resolve?name='+encodeURIComponent(host)+'&type=A');
+    const j=await r.json();
+    const a=(j.Answer||[]).find(x=>x.type===1);
+    const ip=a?a.data:host; dohCache[host]=ip; labelEl.textContent=ip;
+  }catch(e){ labelEl.textContent=host; }
+}
+function showTopoTip(ev,n){
+  const tt=$('tt_topo'), wrap=tt.parentNode.getBoundingClientRect();
+  tt.style.opacity=1; tt.style.left=(ev.clientX-wrap.left)+'px'; tt.style.top=(ev.clientY-wrap.top)+'px';
+  tt.innerHTML='<div class="tt-t"></div><div class="tt-v"></div><div class="tt-r"></div>';
+  tt.children[0].textContent = n.kind==='master'?'Master · ocean': n.kind==='worker'?'Worker':'Target';
+  tt.children[1].textContent = n.name;
+  tt.children[2].textContent = 'ip '+(n.ip||'resolving…')+(n.endpoint?'   ·   '+n.endpoint:'');
+}
+
+function renderTopo(g){
+  const svg=$('topo'); svg.setAttribute('viewBox',`0 0 ${TW} ${TH}`);
+  const nodes=g.nodes||[], edges=g.edges||[];
+  $('e_topo').style.display = nodes.length ? 'none':'flex';
+  const sig=JSON.stringify(nodes.map(n=>n.id+n.ip))+'|'+JSON.stringify(edges.map(e=>e.from+'>'+e.to+e.kind));
+  if(sig===topoSig) return;   // no structural change — let the animation keep running
+  topoSig=sig;
+
+  const ocean=nodes.find(n=>n.kind==='master');
+  const workers=nodes.filter(n=>n.kind==='worker');
+  const targets=nodes.filter(n=>n.kind==='target');
+  const pos={}, colX={master:130, worker:TW/2, target:TW-160};
+  const place=(arr,x)=>{ const n=arr.length; arr.forEach((nd,i)=>{ pos[nd.id]={x,y:n<=1?TH/2:(TH*0.2+TH*0.6*(i/(n-1)))}; }); };
+  if(ocean) pos[ocean.id]={x:colX.master,y:TH/2};
+  place(workers,colX.worker); place(targets,colX.target);
+
+  const NS='http://www.w3.org/2000/svg';
+  const el=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;};
+  const frag=document.createDocumentFragment();
+  topoLoad=[]; topoCtrl=[];
+
+  edges.forEach(e=>{
+    const a=pos[e.from], b=pos[e.to]; if(!a||!b) return;
+    const dx=(b.x-a.x)*0.45;
+    const path=el('path',{d:`M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}`,
+      fill:'none', stroke: e.kind==='load'?'rgba(57,135,229,.30)':'var(--grid)',
+      'stroke-width': e.kind==='load'?2:1.5, 'stroke-dasharray': e.kind==='load'?'':'4 6', 'pointer-events':'none'});
+    frag.appendChild(path);
+    const rec={pathEl:path, job:e.job, dots:[], phase:0, len:0};
+    const N=e.kind==='load'?12:3;
+    for(let i=0;i<N;i++){ rec.dots.push(el('circle',{r:e.kind==='load'?3:2, fill:e.kind==='load'?'var(--s-blue)':'var(--muted)','pointer-events':'none'})); frag.appendChild(rec.dots[i]); }
+    (e.kind==='load'?topoLoad:topoCtrl).push(rec);
+  });
+
+  nodes.forEach(n=>{
+    const p=pos[n.id]; if(!p) return;
+    const r=n.kind==='master'?30:n.kind==='worker'?26:24, col=topoColor(n.kind);
+    const gEl=el('g',{class:'topo-node'});
+    gEl.appendChild(el('circle',{cx:p.x,cy:p.y,r:r+7,fill:col,'fill-opacity':0.12}));
+    gEl.appendChild(el('circle',{cx:p.x,cy:p.y,r,fill:'var(--surface)',stroke:col,'stroke-width':2.5}));
+    const ic=el('text',{x:p.x,y:p.y+4,'text-anchor':'middle','font-size':13,'font-weight':700,fill:col});
+    ic.textContent=n.kind==='master'?'OC':n.kind==='worker'?'WK':'TG'; gEl.appendChild(ic);
+    const lname=el('text',{x:p.x,y:p.y+r+19,'text-anchor':'middle','font-size':13,'font-weight':650,fill:'var(--ink)'});
+    lname.textContent=n.kind==='target'?shortUrl(n.name):n.name; gEl.appendChild(lname);
+    const lip=el('text',{x:p.x,y:p.y+r+35,'text-anchor':'middle','font-size':11,fill:'var(--muted)'});
+    lip.textContent=n.ip||'resolving…'; gEl.appendChild(lip);
+    gEl.addEventListener('pointermove',ev=>showTopoTip(ev,n));
+    gEl.addEventListener('pointerleave',()=>{$('tt_topo').style.opacity=0;});
+    frag.appendChild(gEl);
+    if(n.kind==='target' && !n.ip) resolveTargetIP(n.name,lip);
+  });
+
+  svg.innerHTML=''; svg.appendChild(frag);
+  [...topoLoad,...topoCtrl].forEach(r=>{ r.len=r.pathEl.getTotalLength(); });
+  if(!topoRAF) topoRAF=requestAnimationFrame(topoTick);
+}
+
+function topoTick(ts){
+  const dt=topoLastTs?Math.min(ts-topoLastTs,60):16; topoLastTs=ts;
+  const watched=$('mname').value, rps=samples.length?samples[samples.length-1].rps:0;
+  topoLoad.forEach(r=>{
+    const intensity=(r.job===watched)?rps:60;
+    const vel=0.00004+Math.min(intensity,3000)/3000*0.0006;   // len-fractions per ms
+    r.phase=(r.phase+vel*dt)%1;
+    const len=r.len||1, N=r.dots.length;
+    r.dots.forEach((c,i)=>{ const t=(r.phase+i/N)%1, pt=r.pathEl.getPointAtLength(t*len);
+      c.setAttribute('cx',pt.x); c.setAttribute('cy',pt.y);
+      c.setAttribute('fill-opacity',(0.2+0.75*Math.sin(t*Math.PI)).toFixed(2)); });
+  });
+  topoCtrl.forEach(r=>{ r.phase=(r.phase+0.00006*dt)%1; const len=r.len||1,N=r.dots.length;
+    r.dots.forEach((c,i)=>{ const t=(r.phase+i/N)%1, pt=r.pathEl.getPointAtLength(t*len);
+      c.setAttribute('cx',pt.x); c.setAttribute('cy',pt.y); c.setAttribute('fill-opacity',0.55); }); });
+  topoRAF=requestAnimationFrame(topoTick);
+}
+
+window.addEventListener('resize', ()=>renderAll());
+
+/* ---------- navigation ---------- */
+function showPage(p){
+  document.querySelectorAll('.page').forEach(el=>el.classList.toggle('hidden', el.id!=='page-'+p));
+  document.querySelectorAll('.navi').forEach(a=>a.classList.toggle('active', a.dataset.page===p));
+  if(p==='ocean') renderConnections();
+  if(p==='workers') renderWorkers();
+}
+document.querySelectorAll('.navi').forEach(a=>a.addEventListener('click',()=>showPage(a.dataset.page)));
+
+/* ---------- ocean connections (browser-local) ---------- */
+function getConns(){ try{ return JSON.parse(localStorage.getItem('tsu_conns')||'null'); }catch(e){ return null; } }
+function setConns(a){ localStorage.setItem('tsu_conns', JSON.stringify(a)); }
+function renderConnections(){
+  const conns=getConns()||[], active=master();
+  const c=$('connList'); c.innerHTML='';
+  if(!conns.length){ const d=document.createElement('div'); d.className='page-sub'; d.textContent='No connections yet — add one below.'; c.appendChild(d); return; }
+  conns.forEach(cn=>{
+    const on=cn.url.replace(/\/+$/,'')===active;
+    const row=document.createElement('div'); row.className='conn'+(on?' active':'');
+    const meta=document.createElement('div'); meta.className='meta';
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=cn.name;
+    const u=document.createElement('div'); u.className='u'; u.textContent=cn.url;
+    meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
+    const b=document.createElement('span'); b.className='badge '+(on?'on':'off'); b.textContent=on?'active':'idle'; row.appendChild(b);
+    const mk=(t,cls,fn)=>{ const x=document.createElement('button'); x.className=cls+' mini'; x.textContent=t; x.onclick=fn; return x; };
+    if(!on) row.appendChild(mk('Use','start',()=>useConn(cn.url)));
+    row.appendChild(mk('Edit','ghost',()=>{ $('cn_name').value=cn.name; $('cn_url').value=cn.url; }));
+    row.appendChild(mk('Remove','stop',()=>removeConn(cn.name)));
+    c.appendChild(row);
+  });
+}
+function saveConn(){
+  const name=$('cn_name').value.trim(), url=$('cn_url').value.trim();
+  if(!name||!url){ toast('Missing info','Enter both a name and a master URL.','warn'); return; }
+  const conns=getConns()||[]; const i=conns.findIndex(c=>c.name===name);
+  if(i>=0) conns[i].url=url; else conns.push({name,url});
+  setConns(conns); $('cn_name').value=''; $('cn_url').value='';
+  renderConnections(); toast('Connection saved', name+' → '+url, 'ok');
+}
+function removeConn(name){
+  setConns((getConns()||[]).filter(c=>c.name!==name));
+  renderConnections(); toast('Connection removed', name, 'ok');
+}
+function useConn(url){
+  $('master').value=url; localStorage.setItem('tsu_active', url.replace(/\/+$/,''));
+  samples=[]; prev=null; watchedName=null; renderAll();
+  loadInfo(); renderConnections();
+  toast('Ocean switched', 'Now using '+url, 'ok');
+}
+
+/* ---------- workers page ---------- */
+async function renderWorkers(){
+  const tb=$('workerTable').querySelector('tbody');
+  try{
+    const r=await call('/api/v1/info','info'); const d=r.data||{};
+    let topo={nodes:[]}; try{ topo=JSON.parse(d.topology||'{}'); }catch(e){}
+    const workers=(topo.nodes||[]).filter(n=>n.kind==='worker');
+    $('wk_count').textContent=workers.length;
+    tb.innerHTML='';
+    if(!workers.length){ const tr=document.createElement('tr'),td=document.createElement('td');
+      td.colSpan=6; td.style.color='var(--muted)'; td.style.textAlign='left'; td.textContent='No workers registered.'; tr.appendChild(td); tb.appendChild(tr); return; }
+    workers.forEach(wk=>{
+      const maxq=d['worker_'+wk.id+'_max_qouta']||'—', remq=d['worker_'+wk.id+'_remain_qouta']||'—';
+      const tr=document.createElement('tr');
+      [wk.name, wk.ip, wk.endpoint, maxq, remq].forEach(v=>{ const td=document.createElement('td'); td.textContent=v; tr.appendChild(td); });
+      const st=document.createElement('td'); const bd=document.createElement('span'); bd.className='badge on'; bd.textContent='connected'; st.appendChild(bd); tr.appendChild(st);
+      tb.appendChild(tr);
+    });
+  }catch(e){ setConn(false); toast('Failed to load workers', e.message, 'error'); }
+}
+async function rediscoverWorkers(){
+  try{ const r=await call('/api/v1/workers/reload','reload'); const d=r.data||{};
+    toast('Rediscovered workers', (d.added||'0')+' new · '+(d.workers||'0')+' total', 'ok');
+    renderWorkers();
+  }catch(e){ setConn(false); toast('Rediscover failed', e.message, 'error'); }
+}
+
+/* ---------- boot ---------- */
+(function initConns(){
+  const cur=master();
+  if(!getConns()) setConns([{name:'local', url:cur}]);
+  const active=localStorage.getItem('tsu_active');
+  if(active) $('master').value=active; else localStorage.setItem('tsu_active', cur);
+})();
+loadInfo();
+if($('autopoll').checked) startPoll();
+</script>
+</body>
+</html>

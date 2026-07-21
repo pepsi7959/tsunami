@@ -1,0 +1,68 @@
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.16
+    environment:
+      ETCDCTL_API: "3"
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd0
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd0=http://etcd:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=tsunami-etcd
+    ports:
+      - "2379:2379"
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  tsunami:
+    build:
+      context: .
+      target: tsunami
+    # 8050 (gRPC) stays internal; the master reaches it over the compose network
+    ports:
+      - "8090:8090"
+      - "8091:8091"
+    depends_on:
+      etcd:
+        condition: service_healthy
+    # the admin HTTP server (8090, bound to 0.0.0.0) starts only after the
+    # worker has registered itself in etcd, so it is a reliable readiness gate.
+    # gRPC (8050) binds to the "tsunami" hostname, not loopback, so we don't probe it here.
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8090 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  ocean:
+    build:
+      context: .
+      target: ocean
+    ports:
+      - "8080:8080"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      # ocean reads the worker list from etcd once at boot, so wait until the
+      # worker has started (and registered) before starting the master
+      tsunami:
+        condition: service_healthy
+
+  # static web UI that drives the master's HTTP control API (from the browser).
+  # the master has CORS enabled, so the UI can live on its own origin/port.
+  webcontrol:
+    image: nginx:1.27-alpine
+    ports:
+      - "8082:80"
+    volumes:
+      - ./webcontrol:/usr/share/nginx/html:ro
+    depends_on:
+      - ocean
