@@ -474,6 +474,7 @@ function renderRunning(names, topo){
     const mk=(t,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.textContent=t; b.onclick=fn; return b; };
     if(viewing){ const bd=document.createElement('span'); bd.className='badge on'; bd.textContent='viewing'; row.appendChild(bd); }
     else row.appendChild(mk('Watch','ghost',()=>watchTest(name)));
+    row.appendChild(mk('⤓ Report','ghost',()=>generateReport(name)));
     row.appendChild(mk('■ Stop','stop',()=>stopNamed(name)));
     list.appendChild(row);
     fillRunStat(name, tgt[name]||'');
@@ -879,6 +880,102 @@ async function rediscoverWorkers(){
     toast('Rediscovered workers', (d.added||'0')+' new · '+(d.workers||'0')+' total', 'ok');
     renderWorkers();
   }catch(e){ setConn(false); toast('Rediscover failed', e.message, 'error'); }
+}
+
+/* ---------- HTML report (per running test) ---------- */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function reportFilename(name){
+  const d=new Date();
+  const yy=String(d.getFullYear()).slice(2), mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
+  const hex=Array.from({length:3},()=>Math.floor(Math.random()*16).toString(16)).join('');
+  const safe=(name||'test').replace(/[^a-zA-Z0-9_-]+/g,'_');
+  return `report-${safe}-${yy}${mm}${dd}-${hex}.html`;
+}
+function downloadHTML(filename, html){
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+async function generateReport(name){
+  try{
+    const [mr,sr,ir]=await Promise.all([
+      call('/api/v1/metrics','metrics',{name}),
+      call('/api/v1/sample','sample',{name}),
+      call('/api/v1/info','info'),
+    ]);
+    const d=mr.data;
+    if(!d || (mr.error&&mr.error.code)){ toast('Report failed',(mr.error&&mr.error.message)||'no metrics','error'); return; }
+    // target from topology (cluster info)
+    let target='—';
+    try{ const t=JSON.parse((ir.data||{}).topology||'{}'); const e=(t.edges||[]).find(x=>x.kind==='load'&&x.job===name);
+      if(e){ const n=(t.nodes||[]).find(x=>x.id===e.to); if(n) target=n.name; } }catch(_){}
+    // latest verbose sample (request info), if the test was started verbose
+    let sample=null;
+    try{ const arr=JSON.parse((sr.data||{}).samples||'[]'); if(arr.length){ arr.sort((a,b)=>(b.ts||0)-(a.ts||0)); sample=arr[0]; } }catch(_){}
+    const fn=reportFilename(name);
+    downloadHTML(fn, buildReportHTML(name, d, target, sample));
+    toast('Report generated', fn, 'ok'); logline('report → '+fn);
+  }catch(e){ setConn(false); toast('Report failed', e.message, 'error'); }
+}
+function buildReportHTML(name, d, target, sample){
+  const req=+d.RequestCount||0, err=+d.error_count||0, rps=+d.rps||0, avg=+d.avg||0,
+        min=+d.min||0, max=+d.max||0, wrk=+d.workerCount||0, el=+d.ElapedTime||0;
+  const rate = req>0 ? (err/req*100) : 0;
+  const now=new Date();
+  const kpi=(k,v,u)=>`<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}<span class="u">${esc(u||'')}</span></div></div>`;
+  const hdrs=o=>Object.entries(o||{}).map(([k,v])=>esc(k)+': '+esc(v)).join('\n')||'(none)';
+  let reqSection='';
+  if(sample){
+    reqSection = `
+  <h2>Request / response sample</h2>
+  <div class="two">
+    <div><h3>Request</h3><div class="line">${esc(sample.method||'')} ${esc(sample.url||'')}</div>
+      <pre>${hdrs(sample.requestHeaders)}</pre><pre>${esc(sample.requestBody||'(empty body)')}</pre></div>
+    <div><h3>Response${sample.error?' — ERROR':' — '+esc(sample.status)}</h3>
+      <pre>${sample.error?'':hdrs(sample.responseHeaders)}</pre>
+      <pre>${sample.error?esc(sample.error):esc(sample.responseBody||'(empty body)')}</pre></div>
+  </div>`;
+  }
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Tsunami report — ${esc(name)}</title><style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0d0d0d;color:#eee;padding:32px;}
+  .wrap{max-width:960px;margin:0 auto;}
+  h1{font-size:22px;margin:0 0 4px;} h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:#8b8b85;margin:28px 0 12px;}
+  h3{font-size:12px;text-transform:uppercase;color:#8b8b85;margin:0 0 6px;}
+  .meta{color:#a9a89e;font-size:13px;margin-bottom:8px;} .meta b{color:#eee;}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;} @media(max-width:720px){.tiles{grid-template-columns:1fr 1fr;}}
+  .tile{background:#1a1a19;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px 18px;}
+  .tile .k{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#8b8b85;}
+  .tile .v{font-size:26px;font-weight:680;margin-top:4px;} .tile .u{font-size:13px;color:#8b8b85;font-weight:500;margin-left:4px;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;} @media(max-width:720px){.two{grid-template-columns:1fr;}}
+  .line{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#c3c2b7;word-break:break-all;margin-bottom:6px;}
+  pre{background:#0d0d0d;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:9px;font-size:11px;color:#c3c2b7;
+    overflow:auto;max-height:280px;white-space:pre-wrap;word-break:break-all;}
+  .foot{color:#8b8b85;font-size:11px;margin-top:28px;border-top:1px solid rgba(255,255,255,.1);padding-top:12px;}
+</style></head><body><div class="wrap">
+  <h1>🌊 Tsunami — Load Test Report</h1>
+  <div class="meta">Test: <b>${esc(name)}</b></div>
+  <div class="meta">Target: <b>${esc(target)}</b>${sample?(' &middot; Method: <b>'+esc(sample.method||'—')+'</b>'):''}</div>
+  <div class="meta">Generated: <b>${esc(now.toLocaleString())}</b> &middot; Test runtime: <b>${el.toFixed(1)}s</b></div>
+
+  <h2>Summary</h2>
+  <div class="tiles">
+    ${kpi('Throughput', Math.round(rps).toLocaleString(),'req/s')}
+    ${kpi('Total requests', req.toLocaleString(),'')}
+    ${kpi('Avg latency', avg.toFixed(2),'ms')}
+    ${kpi('Error rate', rate.toFixed(2),'%')}
+  </div>
+  <div class="tiles" style="margin-top:14px">
+    ${kpi('Min latency', min.toFixed(2),'ms')}
+    ${kpi('Max latency', max.toFixed(2),'ms')}
+    ${kpi('Errors', err.toLocaleString(),'')}
+    ${kpi('Workers', wrk.toLocaleString(),'')}
+  </div>
+  ${reqSection}
+  <div class="foot">Generated by Tsunami Web Control · ${esc(now.toISOString())}</div>
+</div></body></html>`;
 }
 
 /* ---------- verbose: last request / response ---------- */
