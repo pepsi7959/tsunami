@@ -112,6 +112,9 @@
   .page-title { font-size:20px; font-weight:680; margin:2px 0 2px; }
   .page-sub { color:var(--muted); font-size:13px; margin-top:-6px; }
   .grid2 { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
+  /* metrics zone keeps the same 18px vertical rhythm as the rest of the page.
+     :not(.hidden) so the id selector doesn't out-specify .hidden { display:none } */
+  #metricsZone:not(.hidden) { display: grid; gap: 18px; }
   @media (max-width: 820px){ .grid2 { grid-template-columns: 1fr; } }
 
   /* connection / worker rows */
@@ -620,6 +623,7 @@ async function loadMetrics(){
   const name=$('mname').value.trim();
   updateMetricsVisibility();
   if(!name){ $('viewingName').textContent='— none —'; return; }   // nothing selected / no running tests
+  $('viewingName').textContent = name;                            // keep the label synced on auto-poll
   // watched test changed (manual pick or auto-switch after a stop) → start a fresh
   // buffer so the charts never mix two tests' timelines (was the "distortion" bug)
   if(name!==watchedName){ watchedName=name; samples=[]; prev=null; renderAll(); }
