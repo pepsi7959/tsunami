@@ -1,1 +1,6 @@
 .vscode-upload.json
+
+dist/
+relbuild/
+*.tgz
+tsunami-control-plane.tgz
