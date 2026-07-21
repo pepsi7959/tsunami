@@ -1,0 +1,24 @@
+# Isolated standalone worker — a single container, no etcd, no master.
+#
+#   docker compose -f worker/docker-compose.yml up -d --build --force-recreate
+#
+# Then drive it directly:
+#   curl -X POST http://localhost:8090/api/v1/admin/start \
+#     -d '{"cmd":"start","conf":{"name":"t1","url":"http://target/","method":"GET","concurrence":50}}'
+#   curl http://localhost:8091/api/v1/metrics
+services:
+  worker:
+    build:
+      context: ..
+      dockerfile: worker/Dockerfile
+    image: tsunami-worker:standalone
+    container_name: tsunami-worker
+    ports:
+      - "8090:8090"   # admin HTTP control API
+      - "8091:8091"   # per-test metrics
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8090 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
