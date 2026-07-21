@@ -1,119 +1,122 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"time"
+	"errors"
+	"log"
 
 	tsgrpc "github.com/tsunami/proto"
 	"google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/peer"
 )
 
-//GRPCClient structure
-type GRPCClient struct {
-	ServerEnpoint string
-	conn          *grpc.ClientConn
-	clnt          tsgrpc.TSControlClient
+// attachServer implements the TSAttach gRPC service. Each worker holds one
+// bidirectional stream: it Registers, then sends Reports/Heartbeats up while the
+// ocean pushes Commands down (via the worker's buffered send channel).
+type attachServer struct {
+	tsgrpc.UnimplementedTSAttachServer
+	oc *Ocean
 }
 
-//Start send start command to worker
-func (c *GRPCClient) Start(r *tsgrpc.Request) (*tsgrpc.Response, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
-	defer cancel()
-
-	res, err := c.clnt.Start(ctx, r)
-	statusCode := status.Code(err)
-
-	if statusCode != codes.OK {
-		return nil, err
-	}
-
-	return res, nil
-}
-
-//Stop send stop command
-func (c *GRPCClient) Stop(r *tsgrpc.Request) (*tsgrpc.Response, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
-	defer cancel()
-
-	res, err := c.clnt.Stop(ctx, r)
-	statusCode := status.Code(err)
-
-	if statusCode != codes.OK {
-		return nil, err
-	}
-
-	return res, nil
-}
-
-//Restart send restart command
-func (c *GRPCClient) Restart(*tsgrpc.Request) (*tsgrpc.Response, error) {
-	return nil, nil
-}
-
-//GetMetrics request the metrics
-func (c *GRPCClient) GetMetrics(req *tsgrpc.Request) (*tsgrpc.Response, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
-	defer cancel()
-
-	res, err := c.clnt.GetMetrics(ctx, req)
-	statusCode := status.Code(err)
-
-	if statusCode != codes.OK {
-		return nil, err
-	}
-
-	return res, nil
-}
-
-//Register register to master node
-func (c *GRPCClient) Register(id int32, name string, maxCon int32) (*tsgrpc.Response, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	r := tsgrpc.RegisterRequest{
-		Id:              id,
-		Name:            name,
-		MaxConcurrences: maxCon,
-	}
-
-	res, err := c.clnt.Register(ctx, &r)
-	statusCode := status.Code(err)
-
-	if statusCode != codes.OK {
-		return nil, err
-	}
-
-	return res, nil
-
-}
-
-//NewClient creat new client
-func NewClient() *GRPCClient {
-	return &GRPCClient{}
-}
-
-//InitClient initlize client
-func (c *GRPCClient) InitClient(endpointServer string) {
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	conn, err := grpc.Dial(endpointServer, opts...)
+func (s *attachServer) Attach(stream grpc.BidiStreamingServer[tsgrpc.WorkerMessage, tsgrpc.OceanMessage]) error {
+	// first message must be Register
+	first, err := stream.Recv()
 	if err != nil {
-		fmt.Println("InitClient error : ", err.Error())
+		return err
+	}
+	reg := first.GetRegister()
+	if reg == nil || reg.GetWorkerId() == "" {
+		return errors.New("first message must be Register with a worker id")
 	}
 
-	clnt := tsgrpc.NewTSControlClient(conn)
+	ip := ""
+	if p, ok := peer.FromContext(stream.Context()); ok && p.Addr != nil {
+		ip = p.Addr.String()
+	}
 
-	c.conn = conn
-	c.clnt = clnt
+	w := &attachedWorker{
+		id:      reg.GetWorkerId(),
+		name:    reg.GetName(),
+		ip:      ip,
+		maxCap:  int(reg.GetMaxConcurrency()),
+		send:    make(chan *tsgrpc.OceanMessage, 32),
+		metrics: make(map[string]*tsgrpc.Metric),
+	}
+
+	if !s.oc.addWorker(w) {
+		return errors.New("ocean is at max_connections")
+	}
+	log.Printf("attach: worker %s (%s) joined from %s, maxCap=%d", w.name, w.id, w.ip, w.maxCap)
+	defer func() {
+		s.oc.removeWorker(w.id)
+		log.Printf("attach: worker %s (%s) left", w.name, w.id)
+	}()
+
+	// sender: drain the worker's command channel to the stream
+	sendDone := make(chan struct{})
+	go func() {
+		defer close(sendDone)
+		for msg := range w.send {
+			if err := stream.Send(msg); err != nil {
+				return
+			}
+		}
+	}()
+
+	// receiver: Reports / Heartbeats until the stream breaks
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+		if r := msg.GetReport(); r != nil && r.GetMetric() != nil {
+			s.oc.onReport(w.id, r.GetMetric())
+		}
+	}
 }
 
-//Close close conection
-func (c *GRPCClient) Close() {
-	c.conn.Close()
+// addWorker registers an attached worker, enforcing max_connections.
+func (oc *Ocean) addWorker(w *attachedWorker) bool {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+	if oc.maxConnections > 0 && len(oc.workers) >= oc.maxConnections {
+		return false
+	}
+	// replace any stale entry with the same id
+	oc.workers[w.id] = w
+	return true
+}
+
+// removeWorker drops a worker on disconnect: free its capacity and detach it
+// from any jobs (the job keeps running on survivors at reduced concurrency).
+func (oc *Ocean) removeWorker(id string) {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+	w := oc.workers[id]
+	if w == nil {
+		return
+	}
+	close(w.send)
+	delete(oc.workers, id)
+	for _, j := range oc.jobs {
+		delete(j.assignments, id)
+	}
+}
+
+// onReport stores the latest per-job metric from a worker.
+func (oc *Ocean) onReport(id string, m *tsgrpc.Metric) {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+	if w := oc.workers[id]; w != nil {
+		w.metrics[m.GetJob()] = m
+	}
+}
+
+// command pushes a command to a worker's stream (non-blocking-ish via buffer).
+func (w *attachedWorker) command(msg *tsgrpc.OceanMessage) {
+	select {
+	case w.send <- msg:
+	default:
+		// buffer full: drop (worker is unhealthy); it will be pruned on stream error
+		log.Printf("attach: worker %s send buffer full, dropping command", w.id)
+	}
 }
