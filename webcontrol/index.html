@@ -324,6 +324,7 @@
       <div class="grow">Viewing: <b id="viewingName">— none —</b></div>
       <select id="mname" onchange="onWatchChange()" style="display:none"></select>
       <button class="ghost" onclick="loadMetrics()">Fetch now</button>
+      <button class="ghost" onclick="generateReport()">Download report</button>
       <div class="spacer"></div>
       <label class="toggle"><input type="checkbox" id="autopoll" checked onchange="togglePoll()" /> auto-refresh (2s)</label>
       <label class="toggle"><input type="checkbox" id="tableview" onchange="toggleTable()" /> table view</label>
@@ -720,34 +721,43 @@ function renderChart(cfg){
     if(label===lastX) return; lastX=label;
     const tx=svgEl('text',{x:xOf(t),y:H-6,'text-anchor':f===0?'start':f===1?'end':'middle',class:'axis-label'}); tx.textContent=label; frag.appendChild(tx); });
 
+  // defs: clip data marks to the plot rect + area-fill gradient
+  const clipId=cfg.svg+'-clip', gid=cfg.svg+'-grad';
+  const defs=svgEl('defs',{});
+  const clip=svgEl('clipPath',{id:clipId});
+  clip.appendChild(svgEl('rect',{x:PAD.l,y:PAD.t,width:plotW,height:plotH}));
+  defs.appendChild(clip);
+  const grad=svgEl('linearGradient',{id:gid,x1:0,y1:0,x2:0,y2:1});
+  grad.appendChild(svgEl('stop',{offset:'0%','stop-color':cfg.color,'stop-opacity':0.16}));
+  grad.appendChild(svgEl('stop',{offset:'100%','stop-color':cfg.color,'stop-opacity':0}));
+  defs.appendChild(grad); frag.appendChild(defs);
+
+  // all data marks live in a clipped group so the line/area/dots can never
+  // spill past the axes (e.g. the first sample or a startup spike)
+  const plot=svgEl('g',{'clip-path':`url(#${clipId})`}); frag.appendChild(plot);
+
   // rolling range band (latency)
   if(roll){
     let up='', dn='';
     samples.forEach((s,i)=>{ up+=(i?'L':'M')+xOf(s.t)+' '+yOf(roll.hi[i])+' '; });
     for(let i=samples.length-1;i>=0;i--){ dn+='L'+xOf(samples[i].t)+' '+yOf(roll.lo[i])+' '; }
-    frag.appendChild(svgEl('path',{d:up+dn+'Z', fill:cfg.color, 'fill-opacity':0.12, stroke:'none'}));
+    plot.appendChild(svgEl('path',{d:up+dn+'Z', fill:cfg.color, 'fill-opacity':0.12, stroke:'none'}));
   }
 
   // area wash + line
-  const gid=cfg.svg+'-grad';
-  const grad=svgEl('linearGradient',{id:gid,x1:0,y1:0,x2:0,y2:1});
-  grad.appendChild(svgEl('stop',{offset:'0%','stop-color':cfg.color,'stop-opacity':0.16}));
-  grad.appendChild(svgEl('stop',{offset:'100%','stop-color':cfg.color,'stop-opacity':0}));
-  const defs=svgEl('defs',{}); defs.appendChild(grad); frag.appendChild(defs);
-
   let line='';
   samples.forEach((s,i)=>{ line+=(i?'L':'M')+xOf(s.t)+' '+yOf(s[cfg.valKey])+' '; });
-  if(!roll) frag.appendChild(svgEl('path',{d:line+`L${xOf(x1)} ${yOf(0)} L${xOf(x0)} ${yOf(0)} Z`, fill:`url(#${gid})`, stroke:'none'}));
-  frag.appendChild(svgEl('path',{d:line, fill:'none', stroke:cfg.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+  if(!roll) plot.appendChild(svgEl('path',{d:line+`L${xOf(x1)} ${yOf(0)} L${xOf(x0)} ${yOf(0)} Z`, fill:`url(#${gid})`, stroke:'none'}));
+  plot.appendChild(svgEl('path',{d:line, fill:'none', stroke:cfg.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
 
   // end dot with surface ring
   const last=samples[samples.length-1];
-  frag.appendChild(svgEl('circle',{cx:xOf(last.t),cy:yOf(last[cfg.valKey]),r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2}));
+  plot.appendChild(svgEl('circle',{cx:xOf(last.t),cy:yOf(last[cfg.valKey]),r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2}));
 
   // crosshair + hover marker
   const cross=svgEl('line',{x1:0,x2:0,y1:PAD.t,y2:PAD.t+plotH,stroke:'var(--muted)','stroke-width':1,'stroke-opacity':0.6,visibility:'hidden'});
   const hov=svgEl('circle',{r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2,visibility:'hidden'});
-  frag.appendChild(cross); frag.appendChild(hov);
+  plot.appendChild(cross); plot.appendChild(hov);
 
   svg.innerHTML=''; svg.appendChild(frag);
 
@@ -767,6 +777,185 @@ function renderChart(cfg){
     tt.children[2].textContent = roll ? `recent range ${cfg.yFmt(roll.lo[best])}–${cfg.yFmt(roll.hi[best])}` : '';
   };
   svg.onpointerleave=()=>{ cross.setAttribute('visibility','hidden'); hov.setAttribute('visibility','hidden'); tt.style.opacity=0; };
+}
+
+/* ---------- downloadable HTML report (goclaw theme) ---------- */
+// static, string-only SVG line+area chart from a samples snapshot (mirrors renderChart geometry)
+function repChart(pts, key, color, yFmt, floor){
+  const W=760,H=210,L=54,R=18,T=14,B=30;
+  if(!pts || pts.length<2) return '<div class="rc-empty">Not enough samples to plot.</div>';
+  const xs=pts.map(p=>p.t), x0=xs[0], x1=xs[xs.length-1]>x0?xs[xs.length-1]:x0+1;
+  let raw=0; pts.forEach(p=>{ if(p[key]>raw) raw=p[key]; });
+  const ymax = raw>0 ? niceMax(raw*1.15) : (floor||1);
+  const plotW=W-L-R, plotH=H-T-B;
+  const xOf=t=> L + (t-x0)/(x1-x0)*plotW;
+  const yOf=v=> Math.max(T, Math.min(T+plotH, T+plotH-(v/ymax)*plotH));
+  let g='';
+  for(let i=0;i<=4;i++){ const v=ymax*i/4, y=yOf(v).toFixed(1);
+    g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#1b283c" stroke-width="1"/>`;
+    g+=`<text x="${L-9}" y="${(+y+3.5).toFixed(1)}" text-anchor="end" class="rc-ax">${yFmt(v)}</text>`;
+  }
+  const span=x1-x0, xd=span>=20?0:span>=4?1:2;
+  [0,.5,1].forEach(f=>{ const t=x0+span*f, a=f===0?'start':f===1?'end':'middle';
+    g+=`<text x="${xOf(t).toFixed(1)}" y="${H-9}" text-anchor="${a}" class="rc-ax">${fmtElapsed(t,xd)}</text>`; });
+  let line=''; pts.forEach((p,i)=>{ line+=(i?'L':'M')+xOf(p.t).toFixed(1)+' '+yOf(p[key]).toFixed(1)+' '; });
+  const area=line+`L${xOf(x1).toFixed(1)} ${yOf(0).toFixed(1)} L${xOf(x0).toFixed(1)} ${yOf(0).toFixed(1)} Z`;
+  const last=pts[pts.length-1], gid='rg_'+key;
+  return `<svg viewBox="0 0 ${W} ${H}" class="rc-svg" role="img" aria-label="time series chart">
+  <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0%" stop-color="${color}" stop-opacity="0.24"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+  ${g}<path d="${area}" fill="url(#${gid})"/>
+  <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="${xOf(last.t).toFixed(1)}" cy="${yOf(last[key]).toFixed(1)}" r="4" fill="${color}" stroke="#0a0f16" stroke-width="2"/></svg>`;
+}
+
+function generateReport(){
+  const name=($('mname').value||watchedName||'').trim();
+  if(!name){ toast('No test selected','Observe a running test first, then generate.','warn'); return; }
+  const pts=samples.slice();
+  if(pts.length<2){ toast('Not enough data','Let the test run a few seconds to collect samples.','warn'); return; }
+
+  const last=pts[pts.length-1];
+  const peakRps=Math.max(...pts.map(s=>s.rps));
+  const avgRps = last.t>0 ? last.req/last.t : 0;
+  const lats=pts.map(s=>s.avg).filter(v=>v>0);
+  const avgLat= lats.length ? lats.reduce((a,b)=>a+b,0)/lats.length : (last.avg||0);
+  const mins=pts.map(s=>s.min).filter(v=>v>0);
+  const minLat= mins.length ? Math.min(...mins) : 0;
+  const maxLat=Math.max(...pts.map(s=>s.max));
+  const requests=last.req, errors=last.err, workers=last.wrk, duration=last.t;
+  const errRate = requests>0 ? errors/requests*100 : 0;
+
+  // best-effort config context from the load-test form
+  const target=($('url')&&$('url').value.trim())||'—';
+  const method=($('method')&&$('method').value)||'GET';
+  const concurrency=($('concurrence')&&$('concurrence').value)||'—';
+
+  const verdict = errRate<1 ? {cls:'pass',label:'PASSED', note:'Error rate under 1% — the target held up under load.'}
+               : errRate<5 ? {cls:'warn',label:'WARNING',note:'Error rate between 1% and 5% — the target showed strain.'}
+                           : {cls:'fail',label:'FAILED', note:'Error rate at or above 5% — the target could not sustain this load.'};
+
+  const gen=new Date();
+  const genStr=gen.toLocaleString();
+  const kpi=(label,val,unit)=>`<div class="kpi"><div class="kl">${label}</div><div class="kv">${val}${unit?`<span class="ku">${unit}</span>`:''}</div></div>`;
+  const row=(k,v)=>`<tr><th>${k}</th><td>${v}</td></tr>`;
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tsunami report — ${esc(name)}</title>
+<style>
+ :root{ --bg:#080d14; --panel:#0f1826; --panel2:#0c1420; --border:#1b283c; --ink:#e8eef6; --muted:#8ba0b8;
+   --cyan:#2ee6ff; --cyan2:#0891b2; --pass:#22d3a7; --warn:#f5a524; --fail:#ff5c72;
+   --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+   --mono:ui-monospace,'SF Mono','JetBrains Mono','Fira Code',Menlo,Consolas,monospace; }
+ *{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
+ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;
+   background-image:radial-gradient(900px 500px at 80% -10%, rgba(46,230,255,.10), transparent 60%);}
+ .wrap{max-width:960px;margin:0 auto;padding:40px 24px 64px}
+ header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;
+   padding-bottom:24px;border-bottom:1px solid var(--border);margin-bottom:28px}
+ .brand{display:flex;align-items:center;gap:12px}
+ .brand svg{width:30px;height:30px;flex:none}
+ .brand .t{font-weight:700;font-size:20px;letter-spacing:.02em}
+ .brand .t b{color:var(--cyan)}
+ .brand .sub{color:var(--muted);font-size:12.5px;font-family:var(--mono);margin-top:2px}
+ .meta{text-align:right;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+ .meta .tn{color:var(--ink);font-size:15px;font-family:var(--sans);font-weight:600;margin-bottom:3px}
+ .verdict{display:flex;align-items:center;gap:16px;padding:18px 22px;border-radius:14px;margin-bottom:30px;
+   border:1px solid var(--border);background:var(--panel)}
+ .verdict .badge{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:.08em;
+   padding:8px 16px;border-radius:999px;white-space:nowrap}
+ .verdict.pass{border-color:rgba(34,211,167,.4)} .verdict.pass .badge{background:rgba(34,211,167,.14);color:var(--pass)}
+ .verdict.warn{border-color:rgba(245,165,36,.4)} .verdict.warn .badge{background:rgba(245,165,36,.14);color:var(--warn)}
+ .verdict.fail{border-color:rgba(255,92,114,.4)} .verdict.fail .badge{background:rgba(255,92,114,.14);color:var(--fail)}
+ .verdict .vt{font-size:14px;color:var(--muted)}
+ h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:600;
+   margin:34px 0 14px;font-family:var(--mono)}
+ .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+ .kpi{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+ .kl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+ .kv{font-family:var(--mono);font-size:23px;font-weight:600;color:var(--ink);line-height:1.1}
+ .kv .ku{font-size:12px;color:var(--muted);font-weight:400;margin-left:4px}
+ .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+ .card .ct{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;margin-bottom:6px}
+ .dot{width:9px;height:9px;border-radius:3px;flex:none}
+ .rc-svg{width:100%;height:auto;display:block}
+ .rc-ax{fill:#6f8299;font-family:var(--mono);font-size:11px}
+ .rc-empty{color:var(--muted);padding:40px;text-align:center;font-size:13px}
+ table{width:100%;border-collapse:collapse;font-size:13.5px}
+ th,td{text-align:left;padding:11px 4px;border-bottom:1px solid var(--border);vertical-align:top}
+ th{color:var(--muted);font-weight:500;width:34%}
+ td{font-family:var(--mono);color:var(--ink);word-break:break-all}
+ footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--border);
+   color:var(--muted);font-size:12px;font-family:var(--mono);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+ footer a{color:var(--cyan);text-decoration:none}
+ @media (max-width:720px){ .grid{grid-template-columns:repeat(2,1fr)} header,.meta{text-align:left} }
+</style></head><body><div class="wrap">
+ <header>
+  <div class="brand">
+   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M1 15c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2c1.1 0 1.65-.5 2.2-1" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 19c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2c1.1 0 1.65-.5 2.2-1" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/><path d="M8 9l4-6 4 6" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/></svg>
+   <div><div class="t"><b>tsunami</b> load report</div><div class="sub">generated ${esc(genStr)}</div></div>
+  </div>
+  <div class="meta"><div class="tn">${esc(name)}</div><div>target · ${esc(target)}</div></div>
+ </header>
+
+ <div class="verdict ${verdict.cls}">
+  <span class="badge">${verdict.label}</span>
+  <span class="vt">${verdict.note}</span>
+ </div>
+
+ <h2>Summary</h2>
+ <div class="grid">
+  ${kpi('Requests', compact(requests))}
+  ${kpi('Peak throughput', compact(Math.round(peakRps)),'req/s')}
+  ${kpi('Avg throughput', compact(Math.round(avgRps)),'req/s')}
+  ${kpi('Error rate', (errRate>=10?Math.round(errRate):errRate.toFixed(2)),'%')}
+  ${kpi('Avg latency', avgLat.toFixed(1),'ms')}
+  ${kpi('Min latency', minLat.toFixed(1),'ms')}
+  ${kpi('Max latency', maxLat.toFixed(1),'ms')}
+  ${kpi('Duration', Math.round(duration),'s')}
+ </div>
+
+ <h2>Throughput over time</h2>
+ <div class="card"><div class="ct"><span class="dot" style="background:#2ee6ff"></span>Requests / second</div>
+  ${repChart(pts,'rps','#2ee6ff',fmtInt,1)}</div>
+
+ <h2>Latency over time</h2>
+ <div class="card"><div class="ct"><span class="dot" style="background:#7c9cff"></span>Average latency (ms)</div>
+  ${repChart(pts,'avg','#7c9cff',v=>(v>=100?String(Math.round(v)):v.toFixed(1)),1)}</div>
+
+ <h2>Error rate over time</h2>
+ <div class="card"><div class="ct"><span class="dot" style="background:#ff6b81"></span>Errors as % of requests</div>
+  ${repChart(pts,'rate','#ff6b81',v=>(v>=10?String(Math.round(v)):v.toFixed(1))+'%',1)}</div>
+
+ <h2>Configuration</h2>
+ <div class="card"><table>
+  ${row('Test name', esc(name))}
+  ${row('Target', esc(target))}
+  ${row('Method', esc(method))}
+  ${row('Requested concurrency', esc(concurrency))}
+  ${row('Workers engaged', workers)}
+  ${row('Total requests', compact(requests)+' ('+requests.toLocaleString()+')')}
+  ${row('Total errors', errors.toLocaleString())}
+ </table></div>
+
+ <footer>
+  <span>Generated by Tsunami · distributed load testing</span>
+  <span>${esc(genStr)}</span>
+ </footer>
+</div></body></html>`;
+
+  const stamp=`${gen.getFullYear()}${String(gen.getMonth()+1).padStart(2,'0')}${String(gen.getDate()).padStart(2,'0')}-${String(gen.getHours()).padStart(2,'0')}${String(gen.getMinutes()).padStart(2,'0')}`;
+  const safe=name.replace(/[^a-z0-9._-]+/gi,'_');
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`tsunami-report-${safe}-${stamp}.html`;
+  document.body.appendChild(a); a.click(); a.remove();
+  window.open(url,'_blank');
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  toast('Report generated', `Saved “${a.download}” and opened it in a new tab.`, 'ok');
 }
 
 function renderAll(){
