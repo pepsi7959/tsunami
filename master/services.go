@@ -207,6 +207,11 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 503, Message: "insufficient worker capacity for the requested concurrency"})
 		return
 	}
+	// drop any cached metric/sample left over from a previous run of this name
+	for _, wk := range oc.workers {
+		delete(wk.metrics, name)
+		delete(wk.samples, name)
+	}
 	for id, take := range alloc {
 		wk := oc.workers[id]
 		wk.used += take
@@ -246,6 +251,9 @@ func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 				wk.used = 0
 			}
 			wk.command(stopCommand(name))
+			// clear cached metric/sample so a stopped job leaves nothing behind
+			delete(wk.metrics, name)
+			delete(wk.samples, name)
 		}
 	}
 	delete(oc.jobs, name)
