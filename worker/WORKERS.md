@@ -26,10 +26,10 @@ stop, and report on load tests. Each worker can run many independent load tests
 
 ## 0. One-command install (agent-style)
 
-Install the worker as a persistent systemd service on any Linux (amd64/arm64) machine
-with a single command. It downloads a prebuilt binary from GitHub Releases, writes a
-cluster-mode config (auto-generating a unique `id` and detecting this host's routable IP),
-and starts the service:
+Install the worker as a persistent service on any Linux **or macOS** (amd64/arm64) machine
+with a single command — systemd on Linux, launchd on macOS. It downloads a prebuilt binary
+from GitHub Releases, writes a cluster-mode config (auto-generating a unique `id` and detecting
+this host's routable IP), and starts the service:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/pepsi7959/tsunami/master/install.sh \
@@ -50,11 +50,15 @@ per-test metrics server on **`:8091`** — open `8050`/`8090` to the master thro
 
 Verify and operate:
 ```bash
-systemctl status tsunami-worker
-journalctl -u tsunami-worker -f
+# Linux (systemd)
+systemctl status tsunami-worker && journalctl -u tsunami-worker -f
+# macOS (launchd)
+launchctl list com.tsunami.worker && tail -f /var/log/tsunami-worker.log
+
 etcdctl --endpoints=10.0.0.5:2379 get --prefix /tsunami/workers/   # confirm registration
 sudo bash install.sh --uninstall                                   # remove (add --purge for config)
 ```
+On macOS there is no `useradd`, so the service runs as `root` by default (override with `--user`).
 
 Re-running the installer is idempotent — it reuses the existing `id` and restarts the service.
 Config keys are documented in §4; for manual/Docker installs see §3.
