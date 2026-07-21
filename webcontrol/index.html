@@ -229,6 +229,9 @@
       <textarea id="body" placeholder='{"email":"user{{seq}}@test.io","id":"{{uuid}}","age":{{randInt 18 65}}}'></textarea>
       <div class="chips" id="tplChips"></div>
       <div class="hint">Click a token to insert it. The <b>Target URL</b> supports tokens too, e.g. <code>?rid={{uuid}}</code>. Each request gets fresh values.</div>
+      <label>Headers <span style="color:var(--muted)">— one per line, "Key: Value"</span></label>
+      <textarea id="headers" style="min-height:52px" placeholder="Authorization: Bearer {{uuid}}&#10;X-Env: staging"></textarea>
+      <div class="hint">POST/PUT/PATCH default to <code>Content-Type: application/json; charset=utf-8</code> unless you set one. Header values support {{tokens}} too.</div>
       <label class="toggle"><input type="checkbox" id="verbose" /> verbose — record &amp; show the last request/response</label>
       <button class="start" style="width:100%; margin-top:12px" onclick="startTest()">▶ Start test</button>
     </div>
@@ -517,6 +520,8 @@ async function startTest(){
 
   const conf={ name, url:$('url').value.trim(), method:$('method').value, concurrence:parseInt($('concurrence').value,10)||1 };
   const body=$('body').value; if(body) conf.body=body;   // supports {{tokens}}, expanded per request by the worker
+  const headers=parseHeaders($('headers').value);        // worker defaults Content-Type for POST/PUT/PATCH if unset
+  if(Object.keys(headers).length) conf.headers=headers;
   conf.verbose = $('verbose').checked;                    // worker records the last request/response for this job
   try{
     const r=await call('/api/v1/start','start',conf);
@@ -901,6 +906,17 @@ async function loadSample(name){
   }catch(e){ /* leave last render; ignore transient errors */ }
 }
 
+/* ---------- headers ("Key: Value" per line -> object) ---------- */
+function parseHeaders(txt){
+  const o={};
+  (txt||'').split('\n').forEach(line=>{
+    const i=line.indexOf(':'); if(i<1) return;
+    const k=line.slice(0,i).trim(); if(!k) return;
+    o[k]=line.slice(i+1).trim();
+  });
+  return o;
+}
+
 /* ---------- template tokens (generated params) ---------- */
 const TPL_TOKENS = ['{{uuid}}','{{seq}}','{{randInt 1 100}}','{{randString 8}}','{{now}}','{{nowMs}}','{{timestamp}}'];
 let lastTpl = 'body';   // which templatable field the token chips insert into
@@ -914,7 +930,7 @@ function renderChips(){
   const c=$('tplChips'); if(!c) return; c.innerHTML='';
   TPL_TOKENS.forEach(t=>{ const b=document.createElement('span'); b.className='chip'; b.textContent=t; b.title='insert '+t; b.onclick=()=>insertToken(t); c.appendChild(b); });
 }
-['url','body'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('focus',()=>lastTpl=id); });
+['url','body','headers'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('focus',()=>lastTpl=id); });
 renderChips();
 
 /* ---------- boot ---------- */

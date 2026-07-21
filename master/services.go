@@ -76,8 +76,21 @@ func startCommand(name string, conf tshttp.Conf, take int) *tsgrpc.OceanMessage 
 			Concurrency: int32(take),
 			Body:        conf.Body,
 			Verbose:     conf.Verbose,
+			Header:      headersToProto(conf.Headers),
 		},
 	}}}
+}
+
+// headersToProto converts a header map to the proto header list.
+func headersToProto(h map[string]string) []*tsgrpc.HTTPHeader {
+	if len(h) == 0 {
+		return nil
+	}
+	out := make([]*tsgrpc.HTTPHeader, 0, len(h))
+	for k, v := range h {
+		out = append(out, &tsgrpc.HTTPHeader{Key: k, Value: v})
+	}
+	return out
 }
 
 func stopCommand(name string) *tsgrpc.OceanMessage {

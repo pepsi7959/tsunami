@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,37 @@ func methodName(m tsgrpc.HTTPMethod) string {
 	default:
 		return "GET"
 	}
+}
+
+// headersFromParams converts the proto header list to a map.
+func headersFromParams(hs []*tsgrpc.HTTPHeader) map[string]string {
+	m := make(map[string]string, len(hs))
+	for _, h := range hs {
+		m[h.GetKey()] = h.GetValue()
+	}
+	return m
+}
+
+// defaultHeaders sets a sensible Content-Type for body-carrying methods when the
+// caller didn't provide one (e.g. POST/PUT/PATCH default to JSON).
+func defaultHeaders(method string, headers map[string]string) map[string]string {
+	if headers == nil {
+		headers = map[string]string{}
+	}
+	switch method {
+	case "POST", "PUT", "PATCH":
+		has := false
+		for k := range headers {
+			if strings.EqualFold(k, "Content-Type") {
+				has = true
+				break
+			}
+		}
+		if !has {
+			headers["Content-Type"] = "application/json; charset=utf-8"
+		}
+	}
+	return headers
 }
 
 // Run keeps a worker attached to an ocean. On every (re)connect it calls
@@ -140,6 +172,7 @@ func (c *OceanClient) handleCommand(cmd *tsgrpc.Command) {
 	switch cmd.GetAction() {
 	case tsgrpc.Action_START:
 		p := cmd.GetParams()
+		method := methodName(p.GetMethod())
 		conf := tshttp.Conf{
 			Name:        name,
 			URL:         p.GetUrl(),
@@ -147,7 +180,8 @@ func (c *OceanClient) handleCommand(cmd *tsgrpc.Command) {
 			Host:        p.GetHost(),
 			Port:        p.GetPort(),
 			Path:        p.GetPath(),
-			Method:      methodName(p.GetMethod()),
+			Method:      method,
+			Headers:     defaultHeaders(method, headersFromParams(p.GetHeader())),
 			Body:        p.GetBody(),
 			Concurrence: int(p.GetConcurrency()),
 		}
