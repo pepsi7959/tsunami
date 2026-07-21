@@ -1,37 +1,93 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Tsunami — Web Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+<script>document.documentElement.setAttribute('data-theme', new URLSearchParams(location.search).get('theme') || localStorage.getItem('tsu_theme') || 'dark');</script>
 <style>
-  /* --- reference dark palette (validated) --- */
+  /* --- semantic, tokenized palette · light default, dark opt-in, whitelabel-ready --- */
   :root {
+    color-scheme: light;
+    --plane:      #f6f8fb;
+    --surface:    #ffffff;
+    --surface-2:  #eef2f7;
+    --ink:        #0f172a;
+    --ink-2:      #334155;
+    --muted:      #5b6b7f;               /* ≥AA on light surfaces */
+    --grid:       #e5eaf0;
+    --axis:       #cbd5e1;
+    --border:     rgba(15,23,42,0.12);
+    --primary:    #ea580c;               /* actions / links (orange) */
+    --success:    #16a34a;               /* healthy / positive only */
+    --warn:       #d97706;
+    --danger:     #dc2626;               /* errors / destructive */
+    /* aliases kept so chart/topology JS (var(--s-blue) …) still resolves */
+    --s-blue:     var(--primary);
+    --s-aqua:     var(--success);
+    --s-crit:     var(--danger);
+    --good:       var(--success);
+    --radius: 14px;
+    --grad: linear-gradient(135deg, #fbbf24 0%, #fb923c 46%, #f97316 100%);
+    --sans: "Source Sans 3", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --display: "Lexend", var(--sans);
+  }
+  [data-theme="dark"] {
     color-scheme: dark;
-    --plane:      #0d0d0d;
-    --surface:    #1a1a19;
-    --surface-2:  #232322;
-    --ink:        #ffffff;
-    --ink-2:      #c3c2b7;
-    --muted:      #898781;
-    --grid:       #2c2c2a;
-    --axis:       #383835;
-    --border:     rgba(255,255,255,0.10);
-    --s-blue:     #3987e5;
-    --s-aqua:     #199e70;
-    --s-crit:     #d03b3b;
-    --good:       #0ca30c;
-    --radius: 12px;
-    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --plane:      #0e0c0b;               /* warm charcoal */
+    --surface:    #17130f;
+    --surface-2:  #221c16;
+    --ink:        #f6f3ee;
+    --ink-2:      #c9c2b6;
+    --muted:      #948b7d;               /* ≥AA on warm charcoal */
+    --grid:       #221c16;
+    --axis:       #33291f;
+    --border:     rgba(255,255,255,0.09);
+    --primary:    #fb923c;               /* orange (text/links/borders) */
+    --success:    #34d399;               /* green */
+    --warn:       #f59e0b;
+    --danger:     #f87171;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: var(--sans); background: var(--plane); color: var(--ink); }
+  h1, h2, .page-title, .tile .v, .me-title { font-family: var(--display); }
+  /* soft warm top glow, dark theme only */
+  [data-theme="dark"] body {
+    background:
+      radial-gradient(1100px 560px at 50% -8%, rgba(249,115,22,.13), transparent 62%),
+      radial-gradient(900px 500px at 88% 4%, rgba(251,146,60,.07), transparent 60%),
+      var(--plane);
+    background-attachment: fixed;
+  }
+  [data-theme="dark"] .card, [data-theme="dark"] .tile {
+    box-shadow: 0 1px 0 rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35);
+  }
   header {
     padding: 16px 24px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 14px; background: var(--surface);
   }
-  header .wave { font-size: 22px; }
+  header .brandmark { display:inline-flex; align-items:center; justify-content:center;
+    width:36px; height:36px; border-radius:11px; background:var(--grad); color:#fff;
+    box-shadow: 0 6px 16px rgba(249,115,22,.35); }
+  header .brandmark svg { width:20px; height:20px; }
   header h1 { font-size: 17px; margin: 0; letter-spacing: .4px; font-weight: 650; }
+  .iconbtn { background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2);
+    width:32px; height:32px; border-radius:8px; padding:0; margin:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+  .iconbtn svg { width:16px; height:16px; }
+  #themeBtn .i-sun { display:none; } [data-theme="dark"] #themeBtn .i-sun { display:inline-flex; }
+  #themeBtn .i-moon { display:inline-flex; } [data-theme="dark"] #themeBtn .i-moon { display:none; }
+  /* empty state for the metrics zone */
+  .metrics-empty { text-align:center; padding:44px 18px; }
+  .metrics-empty .me-title { font-size:15px; font-weight:650; color:var(--ink-2); }
+  .metrics-empty .me-sub { font-size:13px; color:var(--muted); margin-top:6px; max-width:440px; margin-left:auto; margin-right:auto; }
+  /* cluster capacity bar */
+  .capwrap { margin-top:12px; }
+  .capbar { height:8px; background:var(--surface-2); border:1px solid var(--border); border-radius:5px; overflow:hidden; }
+  .capfill { height:100%; width:0%; background:var(--primary); transition:width .3s; }
+  .caplabel { font-size:11px; color:var(--muted); margin-top:6px; }
   header .master { margin-left: auto; font-size: 13px; color: var(--muted); display:flex; align-items:center; gap:10px; }
   header .master input {
     background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
@@ -48,7 +104,8 @@
     font-size:14px; font-weight:600; cursor:pointer; user-select:none; }
   .navi:hover { background:var(--surface-2); color:var(--ink-2); }
   .navi.active { background:var(--surface-2); color:var(--ink); }
-  .navi .ico { font-size:16px; width:18px; text-align:center; }
+  .navi .ico { width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; }
+  .navi .ico svg { width:17px; height:17px; }
   .sidebar .sep { flex:1; }
   .sidebar .foot { font-size:11px; color:var(--muted); padding:8px 13px; }
   .content { flex:1; min-width:0; }
@@ -56,7 +113,10 @@
   main.page.hidden { display:none; }
   .page-title { font-size:20px; font-weight:680; margin:2px 0 2px; }
   .page-sub { color:var(--muted); font-size:13px; margin-top:-6px; }
-  .grid2 { display: grid; grid-template-columns: 320px 1fr; gap: 18px; }
+  .grid2 { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
+  /* metrics zone keeps the same 18px vertical rhythm as the rest of the page.
+     :not(.hidden) so the id selector doesn't out-specify .hidden { display:none } */
+  #metricsZone:not(.hidden) { display: grid; gap: 18px; }
   @media (max-width: 820px){ .grid2 { grid-template-columns: 1fr; } }
 
   /* connection / worker rows */
@@ -67,8 +127,8 @@
   .conn .nm { font-weight:650; }
   .conn .u { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .badge { font-size:11px; font-weight:650; padding:3px 8px; border-radius:20px; }
-  .badge.on { background:rgba(12,163,12,.18); color:#3fb950; }
-  .badge.off{ background:var(--surface); color:var(--muted); }
+  .badge.on { background:rgba(22,163,74,.14); color:var(--success); }
+  .badge.off{ background:var(--surface-2); color:var(--muted); }
   .mini { padding:7px 11px; font-size:13px; margin:0; }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
@@ -85,16 +145,27 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
-  .chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; padding:3px 7px;
-    border-radius:6px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2); cursor:pointer; }
-  .chip:hover { color:var(--ink); border-color: rgba(57,135,229,.55); }
+  .chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; padding:4px 10px;
+    border-radius:999px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2); cursor:pointer; }
+  .chip:hover { color:var(--ink); border-color: rgba(249,115,22,.55); }
   .hint { font-size:11px; color:var(--muted); margin-top:7px; }
   .hint code { background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--ink-2); }
+  .smp { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:820px){ .smp { grid-template-columns:1fr; } }
+  .smp h3 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:0 0 6px; display:flex; align-items:center; gap:8px; }
+  .smp .line { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--ink-2); word-break:break-all; margin-bottom:6px; }
+  .smp pre { background:var(--plane); border:1px solid var(--border); border-radius:8px; padding:8px; margin:0 0 8px;
+    font-size:11px; color:var(--ink-2); overflow:auto; max-height:170px; white-space:pre-wrap; word-break:break-all; }
+  .smp-badge { font-size:11px; font-weight:680; padding:2px 8px; border-radius:20px; }
+  .smp-badge.ok { background:rgba(12,163,12,.18); color:#3fb950; }
+  .smp-badge.warn { background:rgba(250,178,25,.18); color:#fab219; }
+  .smp-badge.bad { background:rgba(208,59,59,.2); color:#ff6b6b; }
   button {
     cursor: pointer; border: none; border-radius: 8px; padding: 10px 15px;
     font-size: 14px; font-weight: 600; color: #fff; margin-top: 14px;
   }
-  button.start { background: var(--s-aqua); } button.stop { background: var(--s-crit); }
+  button.start { background: var(--grad); box-shadow: 0 6px 18px rgba(249,115,22,.28); }
+  button.stop { background: var(--danger); }
   button.ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2); }
   button:hover { filter: brightness(1.1); }  button:disabled { opacity:.45; cursor:not-allowed; }
   .info-grid { display:grid; grid-template-columns: 1fr auto; gap: 7px 16px; font-size: 13px; }
@@ -114,6 +185,8 @@
   .tile .v { font-size: 30px; font-weight: 680; margin-top: 4px; line-height: 1.1; }
   .tile .u { font-size: 14px; color: var(--muted); font-weight: 500; margin-left: 4px; }
   .tile.hero .v { font-size: 46px; }
+  [data-theme="dark"] .tile.hero { border-color: transparent;
+    box-shadow: 0 0 0 1px rgba(251,146,60,.35), 0 10px 34px rgba(249,115,22,.18); }
   .tile.hero { border-color: rgba(57,135,229,.4); }
   .tile.small .v { font-size: 22px; }
   .tile .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
@@ -176,11 +249,15 @@
 </head>
 <body data-palette="#3987e5,#199e70,#d03b3b">
 <header>
-  <span class="wave">🌊</span>
+  <span class="brandmark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c2 0 2 1.6 4 1.6S8 7 10 7s2 1.6 4 1.6S16 7 18 7s2 1.6 4 1.6"/><path d="M2 12c2 0 2 1.6 4 1.6S8 12 10 12s2 1.6 4 1.6S16 12 18 12s2 1.6 4 1.6"/><path d="M2 17c2 0 2 1.6 4 1.6S8 17 10 17s2 1.6 4 1.6S16 17 18 17s2 1.6 4 1.6"/></svg></span>
   <h1>Tsunami — Web Control</h1>
   <div class="master">
     <span id="conn"><span class="dot"></span>connecting…</span>
     <span>Master: <input id="master" value="http://localhost:8080" /></span>
+    <button id="themeBtn" class="iconbtn" onclick="toggleTheme()" title="Toggle light / dark" aria-label="Toggle theme">
+      <span class="i-moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></span>
+      <span class="i-sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span>
+    </button>
   </div>
 </header>
 
@@ -188,9 +265,9 @@
 
 <div class="shell">
   <nav class="sidebar">
-    <div class="navi active" data-page="dashboard"><span class="ico">📊</span> Dashboard</div>
-    <div class="navi" data-page="ocean"><span class="ico">🌊</span> Ocean</div>
-    <div class="navi" data-page="workers"><span class="ico">🖥️</span> Workers</div>
+    <div class="navi active" data-page="dashboard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span> Dashboard</div>
+    <div class="navi" data-page="ocean"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><circle cx="7" cy="7.5" r="0.5" fill="currentColor"/><circle cx="7" cy="16.5" r="0.5" fill="currentColor"/></svg></span> Ocean</div>
+    <div class="navi" data-page="workers"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></span> Workers</div>
     <div class="sep"></div>
     <div class="foot">Tsunami Web Control</div>
   </nav>
@@ -201,7 +278,11 @@
     <div class="card">
       <h2>Cluster</h2>
       <div id="infoBox" class="info-grid"><div class="k">workers</div><div class="v">—</div></div>
-      <button class="ghost" style="width:100%" onclick="loadInfo()">Refresh</button>
+      <div class="capwrap">
+        <div class="capbar"><div class="capfill" id="capFill"></div></div>
+        <div class="caplabel" id="capLabel">capacity —</div>
+      </div>
+      <button class="ghost" style="width:100%; margin-top:12px" onclick="loadInfo()">Refresh</button>
     </div>
     <div class="card">
       <h2>Load test</h2>
@@ -219,16 +300,29 @@
       <textarea id="body" placeholder='{"email":"user{{seq}}@test.io","id":"{{uuid}}","age":{{randInt 18 65}}}'></textarea>
       <div class="chips" id="tplChips"></div>
       <div class="hint">Click a token to insert it. The <b>Target URL</b> supports tokens too, e.g. <code>?rid={{uuid}}</code>. Each request gets fresh values.</div>
-      <div class="row" style="margin-top:12px">
-        <button class="start" style="flex:1" onclick="startTest()">▶ Start</button>
-        <button class="stop"  style="flex:1" onclick="stopTest()">■ Stop</button>
-      </div>
+      <label>Headers <span style="color:var(--muted)">— one per line, "Key: Value"</span></label>
+      <textarea id="headers" style="min-height:52px" placeholder="Authorization: Bearer {{uuid}}&#10;X-Env: staging"></textarea>
+      <div class="hint">POST/PUT/PATCH default to <code>Content-Type: application/json; charset=utf-8</code> unless you set one. Header values support {{tokens}} too.</div>
+      <label class="toggle"><input type="checkbox" id="verbose" /> verbose — record &amp; show the last request/response</label>
+      <button class="start" style="width:100%; margin-top:12px" onclick="startTest()">▶ Start test</button>
     </div>
   </div>
 
+  <!-- running tests: manage (stop) + choose which one to observe -->
+  <div class="card">
+    <div class="toolbar" style="margin-bottom:12px">
+      <h2 style="margin:0">Running tests (<span id="rt_count">0</span>)</h2>
+      <div class="spacer"></div>
+      <button class="ghost mini" onclick="loadInfo()">Refresh</button>
+    </div>
+    <div id="runningList"></div>
+  </div>
+
+  <!-- observe controls: what the charts below are showing -->
   <div class="card">
     <div class="toolbar">
-      <div class="grow"><label>Watching test</label><select id="mname" onchange="onWatchChange()"><option value="">— no running tests —</option></select></div>
+      <div class="grow">Viewing: <b id="viewingName">— none —</b></div>
+      <select id="mname" onchange="onWatchChange()" style="display:none"></select>
       <button class="ghost" onclick="loadMetrics()">Fetch now</button>
       <div class="spacer"></div>
       <label class="toggle"><input type="checkbox" id="autopoll" checked onchange="togglePoll()" /> auto-refresh (2s)</label>
@@ -236,6 +330,13 @@
     </div>
   </div>
 
+  <!-- shown until a test is being watched -->
+  <div class="card metrics-empty" id="emptyState">
+    <div class="me-title">No test selected</div>
+    <div class="me-sub">Start a test on the left, or choose <b>Watch</b> on a running test to see live throughput, latency and errors.</div>
+  </div>
+
+  <div id="metricsZone" class="hidden">
   <!-- KPI hero + primary tiles -->
   <div class="kpis">
     <div class="tile hero"><div class="k">Throughput</div><div class="v" id="m_rps">—<span class="u">req/s</span></div><div class="sub">instantaneous</div></div>
@@ -297,6 +398,26 @@
       </tr></thead><tbody></tbody></table>
     </div>
   </div>
+
+  <!-- verbose: last request / response -->
+  <div class="card hidden" id="sampleCard">
+    <h2>Last request / response <span id="sampleMeta" style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:500"></span></h2>
+    <div class="smp">
+      <div>
+        <h3>Request</h3>
+        <div class="line" id="smpReqLine"></div>
+        <pre id="smpReqHeaders"></pre>
+        <pre id="smpReqBody"></pre>
+      </div>
+      <div>
+        <h3>Response <span id="smpStatus" class="smp-badge"></span></h3>
+        <pre id="smpRespHeaders"></pre>
+        <pre id="smpRespBody"></pre>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /metricsZone -->
 
   <details class="card"><summary>Activity log</summary><pre id="log">ready.</pre></details>
 </main>
@@ -392,7 +513,14 @@ async function loadInfo(quiet){
     $('infoBox').innerHTML = rows.map(()=>`<div class="k"></div><div class="v"></div>`).join('');
     [...$('infoBox').children].forEach((el,i)=>{ el.textContent = i%2 ? (rows[i>>1][1] ?? '—') : rows[i>>1][0]; });
     populateTests(d.jobs);
-    if(d.topology){ try{ renderTopo(JSON.parse(d.topology)); }catch(err){} }
+    // cluster capacity bar
+    const maxc=+d.max_concurrent||0, rem=+d.remaining_Concurrent||0, used=Math.max(0,maxc-rem);
+    $('capFill').style.width = (maxc>0 ? Math.round(used/maxc*100) : 0)+'%';
+    $('capLabel').textContent = maxc>0 ? `${used} / ${maxc} concurrency in use · ${rem} free` : 'capacity —';
+    let topo=null;
+    if(d.topology){ try{ topo=JSON.parse(d.topology); renderTopo(topo); }catch(err){} }
+    const names=(d.jobs||'').split(',').map(s=>s.trim()).filter(Boolean);
+    renderRunning(names, topo);
     if(!quiet) logline('info ok', d);
   }catch(e){ setConn(false); if(!quiet) logline('info failed: '+e.message); }
 }
@@ -407,7 +535,61 @@ function populateTests(csv){
   names.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
   sel.value = names.includes(cur) ? cur : names[0];
 }
-function onWatchChange(){ loadMetrics(); }  // loadMetrics resets the buffer when the watched test changes
+function onWatchChange(){ $('viewingName').textContent = $('mname').value || '— none —'; updateMetricsVisibility(); loadMetrics(); }
+
+/* ---------- running tests list (manage + select) ---------- */
+function cssId(s){ return 'rt_'+String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
+function renderRunning(names, topo){
+  $('rt_count').textContent = names.length;
+  const list=$('runningList');
+  if(!names.length){ list.innerHTML='<div class="page-sub">No running tests — start one on the left.</div>'; return; }
+  // job -> target url (from topology load edges)
+  const tgt={}; const nodes=(topo&&topo.nodes)||[]; const edges=(topo&&topo.edges)||[];
+  edges.forEach(e=>{ if(e.kind==='load'&&e.job){ const n=nodes.find(x=>x.id===e.to); if(n) tgt[e.job]=n.name; } });
+  const watched=$('mname').value;
+  list.innerHTML='';
+  names.forEach(name=>{
+    const viewing = name===watched;
+    const row=document.createElement('div'); row.className='conn'+(viewing?' active':''); row.id=cssId(name);
+    const meta=document.createElement('div'); meta.className='meta';
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=name;
+    const u=document.createElement('div'); u.className='u'; u.textContent=(tgt[name]||'—')+' · loading…';
+    meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
+    const mk=(t,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.textContent=t; b.onclick=fn; return b; };
+    if(viewing){ const bd=document.createElement('span'); bd.className='badge on'; bd.textContent='viewing'; row.appendChild(bd); }
+    else row.appendChild(mk('Watch','ghost',()=>watchTest(name)));
+    row.appendChild(mk('⤓ Report','ghost',()=>generateReport(name)));
+    row.appendChild(mk('■ Stop','stop',()=>stopNamed(name)));
+    list.appendChild(row);
+    fillRunStat(name, tgt[name]||'');
+  });
+}
+async function fillRunStat(name, target){
+  try{
+    const r=await call('/api/v1/metrics','metrics',{name}); const d=r.data; if(!d) return;
+    const row=$(cssId(name)); if(!row) return;
+    const u=row.querySelector('.u'); if(!u) return;
+    const rps=Math.round(+d.rps||0), req=+d.RequestCount||0, err=+d.error_count||0;
+    const rate = req>0 ? (err/req*100) : 0;
+    u.textContent = `${target||'—'} · ${compact(rps)} rps · ${rate.toFixed(1)}% err`;
+  }catch(e){}
+}
+function watchTest(name){
+  $('mname').value=name; $('viewingName').textContent=name;
+  watchedName=null;              // force loadMetrics to reset the chart buffer
+  onWatchChange();
+  loadInfo(true);                // refresh row highlight
+}
+async function stopNamed(name){
+  try{
+    const r=await call('/api/v1/stop','stop',{name});
+    if(r.error && r.error.code){ toast('Stop failed', r.error.message, 'error'); return; }
+    logline('stop → '+name, r);
+    toast('Test stopped', `“${name}” stopped.`, 'ok');
+    if($('mname').value===name){ $('mname').value=''; $('viewingName').textContent='— none —'; watchedName=null; samples=[]; prev=null; renderAll(); }
+    loadInfo();
+  }catch(e){ setConn(false); toast('Stop failed', e.message, 'error'); }
+}
 async function startTest(){
   const name=$('name').value.trim();
   if(!name){ toast('Enter a test name', 'Please give the test a name before starting.', 'warn'); return; }
@@ -423,29 +605,31 @@ async function startTest(){
 
   const conf={ name, url:$('url').value.trim(), method:$('method').value, concurrence:parseInt($('concurrence').value,10)||1 };
   const body=$('body').value; if(body) conf.body=body;   // supports {{tokens}}, expanded per request by the worker
+  const headers=parseHeaders($('headers').value);        // worker defaults Content-Type for POST/PUT/PATCH if unset
+  if(Object.keys(headers).length) conf.headers=headers;
+  conf.verbose = $('verbose').checked;                    // worker records the last request/response for this job
   try{
     const r=await call('/api/v1/start','start',conf);
     if(r.error && r.error.code){ toast('Start failed', r.error.message, 'error'); logline('start failed', r); return; }
     logline('start → '+name, r);
     samples=[]; prev=null; renderAll();
-    await loadInfo(true);             // refresh the dropdown from the master…
+    await loadInfo(true);             // refresh running-tests list from the master…
     $('mname').value=name;            // …then watch the test we just started
+    $('viewingName').textContent=name;
     if($('autopoll').checked) startPoll();
     toast('Test started', `“${name}” is now running against ${conf.url||'the target'}.`, 'ok');
   }catch(e){ setConn(false); toast('Start failed', e.message, 'error'); logline('start failed: '+e.message); }
 }
-async function stopTest(){
-  const name=$('mname').value.trim();
-  try{ const r=await call('/api/v1/stop','stop',{name}); logline('stop → '+name, r); loadInfo(); }
-  catch(e){ setConn(false); logline('stop failed: '+e.message); }
-}
 async function loadMetrics(){
   if(tick++ % 5 === 0) loadInfo(true);   // keep the running-tests dropdown fresh (~every 10s)
   const name=$('mname').value.trim();
-  if(!name) return;                       // nothing selected / no running tests
+  updateMetricsVisibility();
+  if(!name){ $('viewingName').textContent='— none —'; return; }   // nothing selected / no running tests
+  $('viewingName').textContent = name;                            // keep the label synced on auto-poll
   // watched test changed (manual pick or auto-switch after a stop) → start a fresh
   // buffer so the charts never mix two tests' timelines (was the "distortion" bug)
   if(name!==watchedName){ watchedName=name; samples=[]; prev=null; renderAll(); }
+  loadSample(name);   // verbose panel (no-op / hidden if the job isn't verbose)
   try{
     const r=await call('/api/v1/metrics','metrics',{name});
     const d=r.data;
@@ -512,9 +696,10 @@ function renderChart(cfg){
   let rawMax=0;
   for(let i=0;i<samples.length;i++){ rawMax=Math.max(rawMax, roll?roll.hi[i]:samples[i][cfg.valKey]); }
   let ymax, steps=4;
-  if(cfg.integer){ const m=Math.max(1,Math.ceil(rawMax)); if(m<=5){ ymax=m; steps=m; } else { ymax=niceMax(m); } }
+  if(cfg.integer){ const m=Math.max(1,Math.ceil(rawMax)); if(m<=5){ ymax=m; steps=m; } else { ymax=niceMax(Math.ceil(m*1.15)); } }
   else { ymax = rawMax>0 ? niceMax(rawMax*1.15) : (cfg.floorMax||1); }
-  const yOf=v=> PAD.t + plotH - (v/ymax)*plotH;
+  // clamp to the plot rectangle so the line/dots can never render outside the y-scale
+  const yOf=v=> Math.max(PAD.t, Math.min(PAD.t+plotH, PAD.t + plotH - (v/ymax)*plotH));
 
   const frag=document.createDocumentFragment();
 
@@ -535,34 +720,43 @@ function renderChart(cfg){
     if(label===lastX) return; lastX=label;
     const tx=svgEl('text',{x:xOf(t),y:H-6,'text-anchor':f===0?'start':f===1?'end':'middle',class:'axis-label'}); tx.textContent=label; frag.appendChild(tx); });
 
+  // defs: clip data marks to the plot rect + area-fill gradient
+  const clipId=cfg.svg+'-clip', gid=cfg.svg+'-grad';
+  const defs=svgEl('defs',{});
+  const clip=svgEl('clipPath',{id:clipId});
+  clip.appendChild(svgEl('rect',{x:PAD.l,y:PAD.t,width:plotW,height:plotH}));
+  defs.appendChild(clip);
+  const grad=svgEl('linearGradient',{id:gid,x1:0,y1:0,x2:0,y2:1});
+  grad.appendChild(svgEl('stop',{offset:'0%','stop-color':cfg.color,'stop-opacity':0.16}));
+  grad.appendChild(svgEl('stop',{offset:'100%','stop-color':cfg.color,'stop-opacity':0}));
+  defs.appendChild(grad); frag.appendChild(defs);
+
+  // all data marks live in a clipped group so the line/area/dots can never
+  // spill past the axes (e.g. the first sample or a startup spike)
+  const plot=svgEl('g',{'clip-path':`url(#${clipId})`}); frag.appendChild(plot);
+
   // rolling range band (latency)
   if(roll){
     let up='', dn='';
     samples.forEach((s,i)=>{ up+=(i?'L':'M')+xOf(s.t)+' '+yOf(roll.hi[i])+' '; });
     for(let i=samples.length-1;i>=0;i--){ dn+='L'+xOf(samples[i].t)+' '+yOf(roll.lo[i])+' '; }
-    frag.appendChild(svgEl('path',{d:up+dn+'Z', fill:cfg.color, 'fill-opacity':0.12, stroke:'none'}));
+    plot.appendChild(svgEl('path',{d:up+dn+'Z', fill:cfg.color, 'fill-opacity':0.12, stroke:'none'}));
   }
 
   // area wash + line
-  const gid=cfg.svg+'-grad';
-  const grad=svgEl('linearGradient',{id:gid,x1:0,y1:0,x2:0,y2:1});
-  grad.appendChild(svgEl('stop',{offset:'0%','stop-color':cfg.color,'stop-opacity':0.16}));
-  grad.appendChild(svgEl('stop',{offset:'100%','stop-color':cfg.color,'stop-opacity':0}));
-  const defs=svgEl('defs',{}); defs.appendChild(grad); frag.appendChild(defs);
-
   let line='';
   samples.forEach((s,i)=>{ line+=(i?'L':'M')+xOf(s.t)+' '+yOf(s[cfg.valKey])+' '; });
-  if(!roll) frag.appendChild(svgEl('path',{d:line+`L${xOf(x1)} ${yOf(0)} L${xOf(x0)} ${yOf(0)} Z`, fill:`url(#${gid})`, stroke:'none'}));
-  frag.appendChild(svgEl('path',{d:line, fill:'none', stroke:cfg.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+  if(!roll) plot.appendChild(svgEl('path',{d:line+`L${xOf(x1)} ${yOf(0)} L${xOf(x0)} ${yOf(0)} Z`, fill:`url(#${gid})`, stroke:'none'}));
+  plot.appendChild(svgEl('path',{d:line, fill:'none', stroke:cfg.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
 
   // end dot with surface ring
   const last=samples[samples.length-1];
-  frag.appendChild(svgEl('circle',{cx:xOf(last.t),cy:yOf(last[cfg.valKey]),r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2}));
+  plot.appendChild(svgEl('circle',{cx:xOf(last.t),cy:yOf(last[cfg.valKey]),r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2}));
 
   // crosshair + hover marker
   const cross=svgEl('line',{x1:0,x2:0,y1:PAD.t,y2:PAD.t+plotH,stroke:'var(--muted)','stroke-width':1,'stroke-opacity':0.6,visibility:'hidden'});
   const hov=svgEl('circle',{r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2,visibility:'hidden'});
-  frag.appendChild(cross); frag.appendChild(hov);
+  plot.appendChild(cross); plot.appendChild(hov);
 
   svg.innerHTML=''; svg.appendChild(frag);
 
@@ -582,6 +776,200 @@ function renderChart(cfg){
     tt.children[2].textContent = roll ? `recent range ${cfg.yFmt(roll.lo[best])}–${cfg.yFmt(roll.hi[best])}` : '';
   };
   svg.onpointerleave=()=>{ cross.setAttribute('visibility','hidden'); hov.setAttribute('visibility','hidden'); tt.style.opacity=0; };
+}
+
+/* ---------- downloadable HTML report (goclaw theme) ---------- */
+// static, string-only SVG line+area chart from a samples snapshot (mirrors renderChart geometry)
+function repChart(pts, key, color, yFmt, floor){
+  const W=760,H=210,L=54,R=18,T=14,B=30;
+  if(!pts || pts.length<2) return '<div class="rc-empty">Not enough samples to plot.</div>';
+  const xs=pts.map(p=>p.t), x0=xs[0], x1=xs[xs.length-1]>x0?xs[xs.length-1]:x0+1;
+  let raw=0; pts.forEach(p=>{ if(p[key]>raw) raw=p[key]; });
+  const ymax = raw>0 ? niceMax(raw*1.15) : (floor||1);
+  const plotW=W-L-R, plotH=H-T-B;
+  const xOf=t=> L + (t-x0)/(x1-x0)*plotW;
+  const yOf=v=> Math.max(T, Math.min(T+plotH, T+plotH-(v/ymax)*plotH));
+  let g='';
+  for(let i=0;i<=4;i++){ const v=ymax*i/4, y=yOf(v).toFixed(1);
+    g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#1b283c" stroke-width="1"/>`;
+    g+=`<text x="${L-9}" y="${(+y+3.5).toFixed(1)}" text-anchor="end" class="rc-ax">${yFmt(v)}</text>`;
+  }
+  const span=x1-x0, xd=span>=20?0:span>=4?1:2;
+  [0,.5,1].forEach(f=>{ const t=x0+span*f, a=f===0?'start':f===1?'end':'middle';
+    g+=`<text x="${xOf(t).toFixed(1)}" y="${H-9}" text-anchor="${a}" class="rc-ax">${fmtElapsed(t,xd)}</text>`; });
+  let line=''; pts.forEach((p,i)=>{ line+=(i?'L':'M')+xOf(p.t).toFixed(1)+' '+yOf(p[key]).toFixed(1)+' '; });
+  const area=line+`L${xOf(x1).toFixed(1)} ${yOf(0).toFixed(1)} L${xOf(x0).toFixed(1)} ${yOf(0).toFixed(1)} Z`;
+  const last=pts[pts.length-1], gid='rg_'+key;
+  return `<svg viewBox="0 0 ${W} ${H}" class="rc-svg" role="img" aria-label="time series chart">
+  <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0%" stop-color="${color}" stop-opacity="0.24"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+  ${g}<path d="${area}" fill="url(#${gid})"/>
+  <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="${xOf(last.t).toFixed(1)}" cy="${yOf(last[key]).toFixed(1)}" r="4" fill="${color}" stroke="#0a0f16" stroke-width="2"/></svg>`;
+}
+
+async function generateReport(name){
+  name=(name||$('mname').value||watchedName||'').trim();
+  if(!name){ toast('No test selected','Pick a running test, then generate.','warn'); return; }
+
+  // KPIs come from THIS test's live metrics (correct regardless of which test is watched)
+  let d=null;
+  try{ const r=await call('/api/v1/metrics','metrics',{name}); d=r.data; }
+  catch(e){ setConn(false); toast('Report failed', e.message, 'error'); return; }
+  if(!d){ toast('No data', `No metrics available for “${name}”.`, 'warn'); return; }
+
+  // target from the cluster topology (per-test accurate)
+  let target='—';
+  try{
+    const ri=await call('/api/v1/info','info');
+    const g=JSON.parse((ri.data&&ri.data.topology)||'{}');
+    const e=(g.edges||[]).find(x=>x.kind==='load'&&x.job===name);
+    if(e){ const n=(g.nodes||[]).find(x=>x.id===e.to); if(n) target=n.name||n.endpoint||target; }
+  }catch(_){}
+
+  // time-series charts only when this test is the one being watched (that's the only buffer we keep)
+  const pts = (name===watchedName && samples.length>=2) ? samples.slice() : [];
+  const hasSeries = pts.length>=2;
+
+  const requests=+d.RequestCount||0, errors=+d.error_count||0, duration=+d.ElapedTime||0,
+        workers=+d.workerCount||0, maxLat=+d.max||0;
+  const errRate = requests>0 ? errors/requests*100 : 0;
+  const avgRps = duration>0 ? requests/duration : (+d.rps||0);
+  const peakRps = hasSeries ? Math.max(...pts.map(s=>s.rps)) : (+d.rps||avgRps);
+  const lats = hasSeries ? pts.map(s=>s.avg).filter(v=>v>0) : [];
+  const avgLat = lats.length ? lats.reduce((a,b)=>a+b,0)/lats.length : (+d.avg||0);
+  const mins = hasSeries ? pts.map(s=>s.min).filter(v=>v>0) : [];
+  const minLat = mins.length ? Math.min(...mins) : (+d.min||0);
+
+  const verdict = errRate<1 ? {cls:'pass',label:'PASSED', note:'Error rate under 1% — the target held up under load.'}
+               : errRate<5 ? {cls:'warn',label:'WARNING',note:'Error rate between 1% and 5% — the target showed strain.'}
+                           : {cls:'fail',label:'FAILED', note:'Error rate at or above 5% — the target could not sustain this load.'};
+
+  const gen=new Date();
+  const genStr=gen.toLocaleString();
+  const kpi=(label,val,unit)=>`<div class="kpi"><div class="kl">${label}</div><div class="kv">${val}${unit?`<span class="ku">${unit}</span>`:''}</div></div>`;
+  const row=(k,v)=>`<tr><th>${k}</th><td>${v}</td></tr>`;
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tsunami report — ${esc(name)}</title>
+<style>
+ :root{ --bg:#080d14; --panel:#0f1826; --panel2:#0c1420; --border:#1b283c; --ink:#e8eef6; --muted:#8ba0b8;
+   --cyan:#2ee6ff; --cyan2:#0891b2; --pass:#22d3a7; --warn:#f5a524; --fail:#ff5c72;
+   --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+   --mono:ui-monospace,'SF Mono','JetBrains Mono','Fira Code',Menlo,Consolas,monospace; }
+ *{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
+ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;
+   background-image:radial-gradient(900px 500px at 80% -10%, rgba(46,230,255,.10), transparent 60%);}
+ .wrap{max-width:960px;margin:0 auto;padding:40px 24px 64px}
+ header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;
+   padding-bottom:24px;border-bottom:1px solid var(--border);margin-bottom:28px}
+ .brand{display:flex;align-items:center;gap:12px}
+ .brand svg{width:30px;height:30px;flex:none}
+ .brand .t{font-weight:700;font-size:20px;letter-spacing:.02em}
+ .brand .t b{color:var(--cyan)}
+ .brand .sub{color:var(--muted);font-size:12.5px;font-family:var(--mono);margin-top:2px}
+ .meta{text-align:right;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+ .meta .tn{color:var(--ink);font-size:15px;font-family:var(--sans);font-weight:600;margin-bottom:3px}
+ .verdict{display:flex;align-items:center;gap:16px;padding:18px 22px;border-radius:14px;margin-bottom:30px;
+   border:1px solid var(--border);background:var(--panel)}
+ .verdict .badge{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:.08em;
+   padding:8px 16px;border-radius:999px;white-space:nowrap}
+ .verdict.pass{border-color:rgba(34,211,167,.4)} .verdict.pass .badge{background:rgba(34,211,167,.14);color:var(--pass)}
+ .verdict.warn{border-color:rgba(245,165,36,.4)} .verdict.warn .badge{background:rgba(245,165,36,.14);color:var(--warn)}
+ .verdict.fail{border-color:rgba(255,92,114,.4)} .verdict.fail .badge{background:rgba(255,92,114,.14);color:var(--fail)}
+ .verdict .vt{font-size:14px;color:var(--muted)}
+ h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:600;
+   margin:34px 0 14px;font-family:var(--mono)}
+ .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+ .kpi{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+ .kl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+ .kv{font-family:var(--mono);font-size:23px;font-weight:600;color:var(--ink);line-height:1.1}
+ .kv .ku{font-size:12px;color:var(--muted);font-weight:400;margin-left:4px}
+ .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+ .card .ct{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;margin-bottom:6px}
+ .dot{width:9px;height:9px;border-radius:3px;flex:none}
+ .rc-svg{width:100%;height:auto;display:block}
+ .rc-ax{fill:#6f8299;font-family:var(--mono);font-size:11px}
+ .rc-empty{color:var(--muted);padding:40px;text-align:center;font-size:13px}
+ table{width:100%;border-collapse:collapse;font-size:13.5px}
+ th,td{text-align:left;padding:11px 4px;border-bottom:1px solid var(--border);vertical-align:top}
+ th{color:var(--muted);font-weight:500;width:34%}
+ td{font-family:var(--mono);color:var(--ink);word-break:break-all}
+ footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--border);
+   color:var(--muted);font-size:12px;font-family:var(--mono);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+ footer a{color:var(--cyan);text-decoration:none}
+ @media (max-width:720px){ .grid{grid-template-columns:repeat(2,1fr)} header,.meta{text-align:left} }
+</style></head><body><div class="wrap">
+ <header>
+  <div class="brand">
+   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M1 15c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2c1.1 0 1.65-.5 2.2-1" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 19c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2c1.1 0 1.65-.5 2.2-1" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/><path d="M8 9l4-6 4 6" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/></svg>
+   <div><div class="t"><b>tsunami</b> load report</div><div class="sub">generated ${esc(genStr)}</div></div>
+  </div>
+  <div class="meta"><div class="tn">${esc(name)}</div><div>target · ${esc(target)}</div></div>
+ </header>
+
+ <div class="verdict ${verdict.cls}">
+  <span class="badge">${verdict.label}</span>
+  <span class="vt">${verdict.note}</span>
+ </div>
+
+ <h2>Summary</h2>
+ <div class="grid">
+  ${kpi('Requests', compact(requests))}
+  ${kpi('Peak throughput', compact(Math.round(peakRps)),'req/s')}
+  ${kpi('Avg throughput', compact(Math.round(avgRps)),'req/s')}
+  ${kpi('Error rate', (errRate>=10?Math.round(errRate):errRate.toFixed(2)),'%')}
+  ${kpi('Avg latency', avgLat.toFixed(1),'ms')}
+  ${kpi('Min latency', minLat.toFixed(1),'ms')}
+  ${kpi('Max latency', maxLat.toFixed(1),'ms')}
+  ${kpi('Duration', Math.round(duration),'s')}
+ </div>
+
+${ hasSeries ? `
+ <h2>Throughput over time</h2>
+ <div class="card"><div class="ct"><span class="dot" style="background:#2ee6ff"></span>Requests / second</div>
+  ${repChart(pts,'rps','#2ee6ff',fmtInt,1)}</div>
+
+ <h2>Latency over time</h2>
+ <div class="card"><div class="ct"><span class="dot" style="background:#7c9cff"></span>Average latency (ms)</div>
+  ${repChart(pts,'avg','#7c9cff',v=>(v>=100?String(Math.round(v)):v.toFixed(1)),1)}</div>
+
+ <h2>Error rate over time</h2>
+ <div class="card"><div class="ct"><span class="dot" style="background:#ff6b81"></span>Errors as % of requests</div>
+  ${repChart(pts,'rate','#ff6b81',v=>(v>=10?String(Math.round(v)):v.toFixed(1))+'%',1)}</div>
+` : `
+ <h2>Timeline</h2>
+ <div class="card"><div class="rc-empty">This is a snapshot report — the KPIs above are live totals for “${esc(name)}”.<br>Click <b>Watch</b> on this test to record the throughput / latency / error timeline, then generate again.</div></div>
+` }
+
+ <h2>Configuration</h2>
+ <div class="card"><table>
+  ${row('Test name', esc(name))}
+  ${row('Target', esc(target))}
+  ${row('Workers engaged', workers)}
+  ${row('Total requests', compact(requests)+' ('+requests.toLocaleString()+')')}
+  ${row('Total errors', errors.toLocaleString())}
+  ${row('Elapsed', Math.round(duration)+' s')}
+ </table></div>
+
+ <footer>
+  <span>Generated by Tsunami · distributed load testing</span>
+  <span>${esc(genStr)}</span>
+ </footer>
+</div></body></html>`;
+
+  const stamp=`${gen.getFullYear()}${String(gen.getMonth()+1).padStart(2,'0')}${String(gen.getDate()).padStart(2,'0')}-${String(gen.getHours()).padStart(2,'0')}${String(gen.getMinutes()).padStart(2,'0')}`;
+  const safe=name.replace(/[^a-z0-9._-]+/gi,'_');
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`tsunami-report-${safe}-${stamp}.html`;
+  document.body.appendChild(a); a.click(); a.remove();
+  window.open(url,'_blank');
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  toast('Report generated', `Saved “${a.download}” and opened it in a new tab.`, 'ok');
 }
 
 function renderAll(){
@@ -784,6 +1172,152 @@ async function rediscoverWorkers(){
   }catch(e){ setConn(false); toast('Rediscover failed', e.message, 'error'); }
 }
 
+/* ---------- HTML report (per running test) ---------- */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function reportFilename(name){
+  const d=new Date();
+  const yy=String(d.getFullYear()).slice(2), mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
+  const hex=Array.from({length:3},()=>Math.floor(Math.random()*16).toString(16)).join('');
+  const safe=(name||'test').replace(/[^a-zA-Z0-9_-]+/g,'_');
+  return `report-${safe}-${yy}${mm}${dd}-${hex}.html`;
+}
+function downloadHTML(filename, html){
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+async function generateReport(name){
+  try{
+    const [mr,sr,ir]=await Promise.all([
+      call('/api/v1/metrics','metrics',{name}),
+      call('/api/v1/sample','sample',{name}),
+      call('/api/v1/info','info'),
+    ]);
+    const d=mr.data;
+    if(!d || (mr.error&&mr.error.code)){ toast('Report failed',(mr.error&&mr.error.message)||'no metrics','error'); return; }
+    // target from topology (cluster info)
+    let target='—';
+    try{ const t=JSON.parse((ir.data||{}).topology||'{}'); const e=(t.edges||[]).find(x=>x.kind==='load'&&x.job===name);
+      if(e){ const n=(t.nodes||[]).find(x=>x.id===e.to); if(n) target=n.name; } }catch(_){}
+    // latest verbose sample (request info), if the test was started verbose
+    let sample=null;
+    try{ const arr=JSON.parse((sr.data||{}).samples||'[]'); if(arr.length){ arr.sort((a,b)=>(b.ts||0)-(a.ts||0)); sample=arr[0]; } }catch(_){}
+    const fn=reportFilename(name);
+    downloadHTML(fn, buildReportHTML(name, d, target, sample));
+    toast('Report generated', fn, 'ok'); logline('report → '+fn);
+  }catch(e){ setConn(false); toast('Report failed', e.message, 'error'); }
+}
+function buildReportHTML(name, d, target, sample){
+  const req=+d.RequestCount||0, err=+d.error_count||0, rps=+d.rps||0, avg=+d.avg||0,
+        min=+d.min||0, max=+d.max||0, wrk=+d.workerCount||0, el=+d.ElapedTime||0;
+  const rate = req>0 ? (err/req*100) : 0;
+  const now=new Date();
+  const kpi=(k,v,u)=>`<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}<span class="u">${esc(u||'')}</span></div></div>`;
+  const hdrs=o=>Object.entries(o||{}).map(([k,v])=>esc(k)+': '+esc(v)).join('\n')||'(none)';
+  let reqSection='';
+  if(sample){
+    reqSection = `
+  <h2>Request / response sample</h2>
+  <div class="two">
+    <div><h3>Request</h3><div class="line">${esc(sample.method||'')} ${esc(sample.url||'')}</div>
+      <pre>${hdrs(sample.requestHeaders)}</pre><pre>${esc(sample.requestBody||'(empty body)')}</pre></div>
+    <div><h3>Response${sample.error?' — ERROR':' — '+esc(sample.status)}</h3>
+      <pre>${sample.error?'':hdrs(sample.responseHeaders)}</pre>
+      <pre>${sample.error?esc(sample.error):esc(sample.responseBody||'(empty body)')}</pre></div>
+  </div>`;
+  }
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Tsunami report — ${esc(name)}</title><style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;background:#f6f8fb;color:#0f172a;}
+  .brandbar{background:#0f172a;color:#fff;padding:18px 32px;display:flex;align-items:center;gap:12px;}
+  .brandbar svg{width:26px;height:26px;color:#3b82f6;}
+  .brandbar h1{font-size:17px;margin:0;font-weight:680;letter-spacing:.3px;}
+  .wrap{max-width:960px;margin:0 auto;padding:26px 32px 40px;}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;margin:26px 0 12px;}
+  h3{font-size:12px;text-transform:uppercase;color:#64748b;margin:0 0 6px;}
+  .meta{color:#475569;font-size:13px;margin-bottom:6px;} .meta b{color:#0f172a;}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;} @media(max-width:720px){.tiles{grid-template-columns:1fr 1fr;}}
+  .tile{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;}
+  .tile .k{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#64748b;}
+  .tile .v{font-size:24px;font-weight:680;margin-top:4px;} .tile .u{font-size:13px;color:#94a3b8;font-weight:500;margin-left:4px;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px;} @media(max-width:720px){.two{grid-template-columns:1fr;}}
+  .line{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#334155;word-break:break-all;margin-bottom:6px;}
+  pre{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:9px;font-size:11px;color:#334155;
+    overflow:auto;max-height:280px;white-space:pre-wrap;word-break:break-all;}
+  .foot{color:#94a3b8;font-size:11px;margin-top:28px;border-top:1px solid #e2e8f0;padding-top:12px;}
+  @media print{ body{background:#fff;} .brandbar{-webkit-print-color-adjust:exact;print-color-adjust:exact;} }
+</style></head><body>
+  <div class="brandbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c2 0 2 1.6 4 1.6S8 7 10 7s2 1.6 4 1.6S16 7 18 7s2 1.6 4 1.6"/><path d="M2 12c2 0 2 1.6 4 1.6S8 12 10 12s2 1.6 4 1.6S16 12 18 12s2 1.6 4 1.6"/><path d="M2 17c2 0 2 1.6 4 1.6S8 17 10 17s2 1.6 4 1.6S16 17 18 17s2 1.6 4 1.6"/></svg><h1>Tsunami · Load Test Report</h1></div>
+  <div class="wrap">
+  <div class="meta">Test: <b>${esc(name)}</b></div>
+  <div class="meta">Target: <b>${esc(target)}</b>${sample?(' &middot; Method: <b>'+esc(sample.method||'—')+'</b>'):''}</div>
+  <div class="meta">Generated: <b>${esc(now.toLocaleString())}</b> &middot; Test runtime: <b>${el.toFixed(1)}s</b></div>
+
+  <h2>Summary</h2>
+  <div class="tiles">
+    ${kpi('Throughput', Math.round(rps).toLocaleString(),'req/s')}
+    ${kpi('Total requests', req.toLocaleString(),'')}
+    ${kpi('Avg latency', avg.toFixed(2),'ms')}
+    ${kpi('Error rate', rate.toFixed(2),'%')}
+  </div>
+  <div class="tiles" style="margin-top:14px">
+    ${kpi('Min latency', min.toFixed(2),'ms')}
+    ${kpi('Max latency', max.toFixed(2),'ms')}
+    ${kpi('Errors', err.toLocaleString(),'')}
+    ${kpi('Workers', wrk.toLocaleString(),'')}
+  </div>
+  ${reqSection}
+  <div class="foot">Generated by Tsunami Web Control · ${esc(now.toISOString())}</div>
+</div></body></html>`;
+}
+
+/* ---------- verbose: last request / response ---------- */
+function hdrLines(o){ return Object.entries(o||{}).map(([k,v])=>k+': '+v).join('\n'); }
+let sampleSeen={name:'',ts:0,stale:0};   // tracks whether the verbose sample is still advancing
+async function loadSample(name){
+  const card=$('sampleCard');
+  try{
+    const r=await call('/api/v1/sample','sample',{name});
+    const d=r.data||{};
+    let arr=[]; try{ arr=JSON.parse(d.samples||'[]'); }catch(e){}
+    if(!arr.length){ card.classList.add('hidden'); return; }
+    arr.sort((a,b)=>(b.ts||0)-(a.ts||0));   // most recent across workers
+    const s=arr[0];
+    // The ocean keeps the last sample cached even after a job stops or is
+    // restarted without verbose. Only show the panel while the sample is still
+    // being refreshed (a live verbose job updates it every report interval);
+    // if the timestamp stops advancing, the job isn't recording -> hide.
+    if(name!==sampleSeen.name){ sampleSeen={name,ts:0,stale:0}; }
+    if(s.ts && s.ts!==sampleSeen.ts){ sampleSeen.ts=s.ts; sampleSeen.stale=0; }
+    else { sampleSeen.stale++; }
+    if(sampleSeen.stale>=2){ card.classList.add('hidden'); return; }
+    card.classList.remove('hidden');
+    const when = s.ts ? new Date(s.ts).toLocaleTimeString() : '';
+    $('sampleMeta').textContent = `— ${s.worker||''} · ${when} · ${(s.latencyMs||0).toFixed(1)} ms`;
+    $('smpReqLine').textContent = `${s.method||''} ${s.url||''}`;
+    $('smpReqHeaders').textContent = hdrLines(s.requestHeaders) || '(no headers)';
+    $('smpReqBody').textContent = s.requestBody || '(empty body)';
+    const badge=$('smpStatus');
+    if(s.error){ badge.textContent='ERROR'; badge.className='smp-badge bad'; }
+    else { badge.textContent=s.status; badge.className='smp-badge '+((s.status>=200&&s.status<300)?'ok':'warn'); }
+    $('smpRespHeaders').textContent = s.error ? '' : (hdrLines(s.responseHeaders) || '(no headers)');
+    $('smpRespBody').textContent = s.error ? s.error : (s.responseBody || '(empty body)');
+  }catch(e){ /* leave last render; ignore transient errors */ }
+}
+
+/* ---------- headers ("Key: Value" per line -> object) ---------- */
+function parseHeaders(txt){
+  const o={};
+  (txt||'').split('\n').forEach(line=>{
+    const i=line.indexOf(':'); if(i<1) return;
+    const k=line.slice(0,i).trim(); if(!k) return;
+    o[k]=line.slice(i+1).trim();
+  });
+  return o;
+}
+
 /* ---------- template tokens (generated params) ---------- */
 const TPL_TOKENS = ['{{uuid}}','{{seq}}','{{randInt 1 100}}','{{randString 8}}','{{now}}','{{nowMs}}','{{timestamp}}'];
 let lastTpl = 'body';   // which templatable field the token chips insert into
@@ -797,10 +1331,17 @@ function renderChips(){
   const c=$('tplChips'); if(!c) return; c.innerHTML='';
   TPL_TOKENS.forEach(t=>{ const b=document.createElement('span'); b.className='chip'; b.textContent=t; b.title='insert '+t; b.onclick=()=>insertToken(t); c.appendChild(b); });
 }
-['url','body'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('focus',()=>lastTpl=id); });
+['url','body','headers'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('focus',()=>lastTpl=id); });
 renderChips();
 
+/* ---------- theme + metrics-zone visibility ---------- */
+function applyTheme(t){ const dark=(t==='dark'); document.documentElement.setAttribute('data-theme', dark?'dark':'light'); try{ localStorage.setItem('tsu_theme', dark?'dark':'light'); }catch(_){} }
+function toggleTheme(){ applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'); }
+function updateMetricsVisibility(){ const on=!!$('mname').value; $('metricsZone').classList.toggle('hidden', !on); $('emptyState').classList.toggle('hidden', on); }
+
 /* ---------- boot ---------- */
+applyTheme(new URLSearchParams(location.search).get('theme') || localStorage.getItem('tsu_theme') || 'dark');
+updateMetricsVisibility();
 (function initConns(){
   const cur=master();
   if(!getConns()) setConns([{name:'local', url:cur}]);

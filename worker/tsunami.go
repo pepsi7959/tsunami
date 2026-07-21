@@ -75,6 +75,10 @@ type Tsunami struct {
 
 	// shell service
 	shell *Shell
+
+	// verbose records the last request/response for this job (see sample.go)
+	verbose bool
+	sample  *sampleRec
 }
 
 // Init is used to initiaize parameters, logging and workers
@@ -115,8 +119,11 @@ func (ts *Tsunami) Init(maxQueues int) {
 		WriteTimeout: time.Second * 30,
 		IsTLS:        isTLS,
 		Dial:         func(addr string) (net.Conn, error) { return fasthttp.DialTimeout(addr, time.Second*60) }}
+	if ts.verbose {
+		ts.sample = &sampleRec{}
+	}
 	for i := 0; i < ts.conf.Concurrence; i++ {
-		worker := Worker{Done: &ts.done, conf: ts.conf, client: c}
+		worker := Worker{Done: &ts.done, conf: ts.conf, client: c, sample: ts.sample}
 		ts.AddWorker(worker)
 	}
 }
@@ -174,16 +181,17 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 		workers = len(ts.workers)
 
 		if ts.enableReport == true {
-			for _, w := range ts.workers {
-				numRes += w.GetNumRes()
-				numErr += w.GetNumErr()
-				avg += w.GetAvgRes()
-				if w.GetMinRes() < min {
-					min = w.GetMinRes()
+			for i := range ts.workers {
+				wk := &ts.workers[i]
+				numRes += wk.GetNumRes()
+				numErr += wk.GetNumErr()
+				avg += wk.GetAvgRes()
+				if wk.GetMinRes() < min {
+					min = wk.GetMinRes()
 				}
 
-				if w.GetMaxRes() > max {
-					max = w.GetMaxRes()
+				if wk.GetMaxRes() > max {
+					max = wk.GetMaxRes()
 				}
 			}
 			avg = avg / float64(workers)

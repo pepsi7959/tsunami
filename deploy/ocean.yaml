@@ -1,11 +1,13 @@
-name: master
-id: fed3f59d-9b32-4efe-a372-ca02d7ea9f66
+name: ocean-1
+id: ocean-1
 endpoints:
-  http: 0.0.0.0:8080
-
+  http: 0.0.0.0:8080 # client API + web control
+  grpc: 0.0.0.0:8050 # worker attach stream
+advertise:
+  grpc: ocean:8050 # compose service name (reachable by workers on the network)
+max_connections: 100
 registry:
-  request_timeout: 2
-  dial_timeout: 2
-  client_config_key: tsunami_config_client_
   endpoints:
     - etcd:2379
+lease:
+  ttl: 10

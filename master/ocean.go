@@ -36,6 +36,7 @@ type attachedWorker struct {
 	used    int                              // concurrency currently assigned
 	send    chan *tsgrpc.OceanMessage         // buffered; drained to the stream
 	metrics map[string]*tsgrpc.Metric         // latest per-job metric from this worker
+	samples map[string]*tsgrpc.Sample         // latest per-job request/response (verbose)
 }
 
 // job is a running load test owned by this ocean.
@@ -178,6 +179,7 @@ func main() {
 	app.AddAPI(APIVersion+"/stop", oc.Stop)
 	app.AddAPI(APIVersion+"/metrics", oc.GetMetrics)
 	app.AddAPI(APIVersion+"/info", oc.GetInfo)
+	app.AddAPI(APIVersion+"/sample", oc.GetSample)
 	log.Println("HTTP API:", oc.viper.GetString("endpoints.http"))
 	app.Run()
 }

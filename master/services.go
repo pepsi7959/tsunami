@@ -57,6 +57,7 @@ func confFromReq(c tshttp.CmdConf) tshttp.Conf {
 		Headers:     c.Headers,
 		Body:        c.Body,
 		Concurrence: c.Concurrence,
+		Verbose:     c.Verbose,
 	}
 }
 
@@ -74,8 +75,22 @@ func startCommand(name string, conf tshttp.Conf, take int) *tsgrpc.OceanMessage 
 			Path:        conf.Path,
 			Concurrency: int32(take),
 			Body:        conf.Body,
+			Verbose:     conf.Verbose,
+			Header:      headersToProto(conf.Headers),
 		},
 	}}}
+}
+
+// headersToProto converts a header map to the proto header list.
+func headersToProto(h map[string]string) []*tsgrpc.HTTPHeader {
+	if len(h) == 0 {
+		return nil
+	}
+	out := make([]*tsgrpc.HTTPHeader, 0, len(h))
+	for k, v := range h {
+		out = append(out, &tsgrpc.HTTPHeader{Key: k, Value: v})
+	}
+	return out
 }
 
 func stopCommand(name string) *tsgrpc.OceanMessage {
@@ -192,6 +207,11 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 503, Message: "insufficient worker capacity for the requested concurrency"})
 		return
 	}
+	// drop any cached metric/sample left over from a previous run of this name
+	for _, wk := range oc.workers {
+		delete(wk.metrics, name)
+		delete(wk.samples, name)
+	}
 	for id, take := range alloc {
 		wk := oc.workers[id]
 		wk.used += take
@@ -231,6 +251,9 @@ func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 				wk.used = 0
 			}
 			wk.command(stopCommand(name))
+			// clear cached metric/sample so a stopped job leaves nothing behind
+			delete(wk.metrics, name)
+			delete(wk.samples, name)
 		}
 	}
 	delete(oc.jobs, name)
@@ -260,7 +283,7 @@ func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agg := tshttp.Metric{Name: name}
-	var num int
+	var avgWeighted, weight float64
 	for id := range j.assignments {
 		wk := oc.workers[id]
 		if wk == nil {
@@ -270,25 +293,28 @@ func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		if m == nil {
 			continue
 		}
-		num++
 		agg.WorkerCount += int(m.GetWorkerCount())
 		agg.RequestCount += int(m.GetRequestCount())
 		agg.ErrorCount += int(m.GetErrorCount())
-		agg.Avg += m.GetAvg()
 		agg.Rps += m.GetRps()
 		if m.GetMax() > agg.Max {
 			agg.Max = m.GetMax()
 		}
-		if agg.Min == 0.0 || (m.GetMin() > 0 && m.GetMin() < agg.Min) {
+		if m.GetMin() > 0 && (agg.Min == 0.0 || m.GetMin() < agg.Min) {
 			agg.Min = m.GetMin()
 		}
 		if m.GetElapsedTime() > agg.ElapedTime {
 			agg.ElapedTime = m.GetElapsedTime()
 		}
+		// request-weighted mean latency; weight by successful responses (req-err)
+		if wgt := float64(m.GetRequestCount() - m.GetErrorCount()); wgt > 0 {
+			avgWeighted += m.GetAvg() * wgt
+			weight += wgt
+		}
 	}
 	oc.mu.Unlock()
-	if num > 0 {
-		agg.Avg = agg.Avg / float64(num)
+	if weight > 0 {
+		agg.Avg = avgWeighted / weight
 	}
 	tshttp.WriteSuccess(&w, metricxToSlice(&agg), nil)
 }
@@ -306,6 +332,72 @@ func metricxToSlice(m *tshttp.Metric) *map[string]string {
 		"rps":          fmt.Sprintf("%f", m.Rps),
 	}
 	return &data
+}
+
+// SampleView is a JSON-friendly last request/response captured by a worker.
+type SampleView struct {
+	Worker          string            `json:"worker"`
+	WorkerID        string            `json:"workerID"`
+	Method          string            `json:"method"`
+	URL             string            `json:"url"`
+	RequestHeaders  map[string]string `json:"requestHeaders"`
+	RequestBody     string            `json:"requestBody"`
+	Status          int               `json:"status"`
+	ResponseHeaders map[string]string `json:"responseHeaders"`
+	ResponseBody    string            `json:"responseBody"`
+	LatencyMs       float64           `json:"latencyMs"`
+	Error           string            `json:"error"`
+	TS              int64             `json:"ts"`
+}
+
+func headerMap(hs []*tsgrpc.HTTPHeader) map[string]string {
+	m := make(map[string]string, len(hs))
+	for _, h := range hs {
+		m[h.GetKey()] = h.GetValue()
+	}
+	return m
+}
+
+// GetSample returns the latest request/response each worker captured for a
+// verbose job (verbose must have been enabled when the test was started).
+func (oc *Ocean) GetSample(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	job := req.Conf.Name
+
+	views := make([]SampleView, 0)
+	oc.mu.Lock()
+	for _, wk := range oc.workers {
+		s := wk.samples[job]
+		if s == nil {
+			continue
+		}
+		views = append(views, SampleView{
+			Worker:          wk.name,
+			WorkerID:        wk.id,
+			Method:          s.GetMethod(),
+			URL:             s.GetUrl(),
+			RequestHeaders:  headerMap(s.GetRequestHeader()),
+			RequestBody:     s.GetRequestBody(),
+			Status:          int(s.GetStatusCode()),
+			ResponseHeaders: headerMap(s.GetResponseHeader()),
+			ResponseBody:    s.GetResponseBody(),
+			LatencyMs:       s.GetLatencyMs(),
+			Error:           s.GetError(),
+			TS:              s.GetTs(),
+		})
+	}
+	oc.mu.Unlock()
+
+	b, _ := json.Marshal(views)
+	tshttp.WriteSuccess(&w, &map[string]string{"job": job, "samples": string(b)}, nil)
 }
 
 // GetInfo reports cluster state + topology for the web control.

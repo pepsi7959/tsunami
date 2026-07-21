@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	tshttp "github.com/tsunami/libs"
@@ -12,16 +13,18 @@ type client interface {
 	do() (code int, msTaken uint64, err error)
 }
 
-// Stat statistic structure
+// Stat holds one worker's counters. Each field is written only by that worker's
+// own request goroutine and read by the reporter goroutine, so all access is
+// atomic (single writer, single reader) to stay data-race free.
 type Stat struct {
-	numReq int
-	numRes int
+	numReq int64 // total requests attempted (success + error)
+	numErr int64 // failed attempts (transport error or non-2xx)
 
+	// latency is tracked over SUCCESSFUL responses only, in nanoseconds
+	numRes     int64 // count of successful responses (avg denominator)
+	sumResTime int64 // sum of successful response times
 	minResTime int64
 	maxResTime int64
-	avgResTime float64
-
-	numErr int
 }
 
 //Worker structure
@@ -36,6 +39,9 @@ type Worker struct {
 	urlTmpl     *Template
 	bodyTmpl    *Template
 	headerTmpls map[string]*Template
+
+	// sample recorder, shared across a service's workers; nil unless verbose
+	sample *sampleRec
 }
 
 func (w *Worker) url() string {
@@ -52,53 +58,52 @@ func (w *Worker) url() string {
 	return w.conf.URL
 }
 
-// UpdateErr update the error value
-func (w *Worker) UpdateErr() {
-	w.stat.numErr++
-}
+//GetNumReq total requests attempted (success + error)
+func (w *Worker) GetNumReq() int { return int(atomic.LoadInt64(&w.stat.numReq)) }
 
-//GetNumErr get number of errors
-func (w Worker) GetNumErr() int {
-	return w.stat.numErr
-}
+//GetNumErr number of failed requests
+func (w *Worker) GetNumErr() int { return int(atomic.LoadInt64(&w.stat.numErr)) }
 
-//GetNumRes get number of responses
-func (w Worker) GetNumRes() int {
-	return w.stat.numRes
-}
+//GetNumRes number of successful responses (latency samples)
+func (w *Worker) GetNumRes() int { return int(atomic.LoadInt64(&w.stat.numRes)) }
 
-//GetMaxRes get maximum time in micro second
-func (w Worker) GetMaxRes() float64 {
-	return float64(w.stat.maxResTime) / 1000000.00
-}
+//GetSumNanos sum of successful response times, in nanoseconds
+func (w *Worker) GetSumNanos() int64 { return atomic.LoadInt64(&w.stat.sumResTime) }
 
-//GetMinRes get mininum time in micro second
-func (w Worker) GetMinRes() float64 {
-	return float64(w.stat.minResTime) / 1000000.00
-}
+//GetMaxRes maximum successful response time, in milliseconds
+func (w *Worker) GetMaxRes() float64 { return float64(atomic.LoadInt64(&w.stat.maxResTime)) / 1e6 }
 
-//GetAvgRes get average time in micro second
-func (w Worker) GetAvgRes() float64 {
-	return w.stat.avgResTime / 1000000
-}
+//GetMinRes minimum successful response time, in milliseconds
+func (w *Worker) GetMinRes() float64 { return float64(atomic.LoadInt64(&w.stat.minResTime)) / 1e6 }
 
-//UpdateStat update statistic
-func (w *Worker) UpdateStat(resTime int64) {
-	if resTime < w.stat.minResTime || w.stat.minResTime == 0 {
-		w.stat.minResTime = resTime
+//GetAvgRes mean successful response time, in milliseconds (true mean = sum/count)
+func (w *Worker) GetAvgRes() float64 {
+	n := atomic.LoadInt64(&w.stat.numRes)
+	if n == 0 {
+		return 0
 	}
+	return float64(atomic.LoadInt64(&w.stat.sumResTime)) / float64(n) / 1e6
+}
 
-	if resTime > w.stat.maxResTime {
-		w.stat.maxResTime = resTime
+// record folds one completed attempt into the stats. Latency (min/max/avg) is
+// tracked over successful responses only, so a transport failure or timeout
+// never pollutes the latency numbers; failures only bump numErr.
+func (w *Worker) record(ok bool, resTime int64) {
+	atomic.AddInt64(&w.stat.numReq, 1)
+	if !ok {
+		atomic.AddInt64(&w.stat.numErr, 1)
+		return
 	}
-
-	if w.stat.avgResTime == 0 {
-		w.stat.avgResTime = float64(resTime)
-	} else {
-		w.stat.avgResTime = (w.stat.avgResTime + float64(resTime)) / 2
+	atomic.AddInt64(&w.stat.numRes, 1)
+	atomic.AddInt64(&w.stat.sumResTime, resTime)
+	// single writer per worker: load/compare/store is safe, and atomics keep
+	// the reporter goroutine's reads race-free.
+	if mn := atomic.LoadInt64(&w.stat.minResTime); mn == 0 || resTime < mn {
+		atomic.StoreInt64(&w.stat.minResTime, resTime)
 	}
-
-	w.stat.numRes++
+	if mx := atomic.LoadInt64(&w.stat.maxResTime); resTime > mx {
+		atomic.StoreInt64(&w.stat.maxResTime, resTime)
+	}
 }
 
 //Run invoke the worker
@@ -142,18 +147,20 @@ func (w *Worker) do() {
 	resp := fasthttp.AcquireResponse()
 	start := time.Now()
 	err := w.client.Do(req, resp)
+	ok := false
 	if err != nil {
-		w.UpdateErr()
 		fmt.Println("error client do: " + err.Error())
+	} else if code := resp.StatusCode(); code < 200 || code >= 300 {
+		fmt.Println("code: ", code, "Error: ", string(resp.Body()))
 	} else {
-		code := resp.StatusCode()
-		if code != 200 {
-			w.UpdateErr()
-			fmt.Println("code: ", code, "Error: ", string(resp.Body()))
-		}
+		ok = true
 	}
 
-	w.UpdateStat(time.Since(start).Nanoseconds())
+	elapsed := time.Since(start).Nanoseconds()
+	if w.sample != nil {
+		w.sample.capture(req, resp, float64(elapsed)/1e6, err)
+	}
+	w.record(ok, elapsed)
 
 	fasthttp.ReleaseRequest(req)
 	fasthttp.ReleaseResponse(resp)

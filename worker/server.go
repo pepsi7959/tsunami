@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,37 @@ func methodName(m tsgrpc.HTTPMethod) string {
 	default:
 		return "GET"
 	}
+}
+
+// headersFromParams converts the proto header list to a map.
+func headersFromParams(hs []*tsgrpc.HTTPHeader) map[string]string {
+	m := make(map[string]string, len(hs))
+	for _, h := range hs {
+		m[h.GetKey()] = h.GetValue()
+	}
+	return m
+}
+
+// defaultHeaders sets a sensible Content-Type for body-carrying methods when the
+// caller didn't provide one (e.g. POST/PUT/PATCH default to JSON).
+func defaultHeaders(method string, headers map[string]string) map[string]string {
+	if headers == nil {
+		headers = map[string]string{}
+	}
+	switch method {
+	case "POST", "PUT", "PATCH":
+		has := false
+		for k := range headers {
+			if strings.EqualFold(k, "Content-Type") {
+				has = true
+				break
+			}
+		}
+		if !has {
+			headers["Content-Type"] = "application/json; charset=utf-8"
+		}
+	}
+	return headers
 }
 
 // Run keeps a worker attached to an ocean. On every (re)connect it calls
@@ -114,13 +146,17 @@ func (c *OceanClient) reportLoop(stream grpc.BidiStreamingClient[tsgrpc.WorkerMe
 			return
 		case <-t.C:
 			c.mu.Lock()
-			metrics := make([]*tsgrpc.Metric, 0, len(c.ctrl.services))
+			reports := make([]*tsgrpc.Report, 0, len(c.ctrl.services))
 			for _, ts := range c.ctrl.services {
-				metrics = append(metrics, serviceMetric(ts))
+				rep := &tsgrpc.Report{Metric: serviceMetric(ts)}
+				if ts.verbose && ts.sample != nil {
+					rep.Sample = ts.sample.get() // last request/response for this job
+				}
+				reports = append(reports, rep)
 			}
 			c.mu.Unlock()
-			for _, m := range metrics {
-				if stream.Send(&tsgrpc.WorkerMessage{Msg: &tsgrpc.WorkerMessage_Report{Report: &tsgrpc.Report{Metric: m}}}) != nil {
+			for _, rep := range reports {
+				if stream.Send(&tsgrpc.WorkerMessage{Msg: &tsgrpc.WorkerMessage_Report{Report: rep}}) != nil {
 					return
 				}
 			}
@@ -136,6 +172,7 @@ func (c *OceanClient) handleCommand(cmd *tsgrpc.Command) {
 	switch cmd.GetAction() {
 	case tsgrpc.Action_START:
 		p := cmd.GetParams()
+		method := methodName(p.GetMethod())
 		conf := tshttp.Conf{
 			Name:        name,
 			URL:         p.GetUrl(),
@@ -143,26 +180,27 @@ func (c *OceanClient) handleCommand(cmd *tsgrpc.Command) {
 			Host:        p.GetHost(),
 			Port:        p.GetPort(),
 			Path:        p.GetPath(),
-			Method:      methodName(p.GetMethod()),
+			Method:      method,
+			Headers:     defaultHeaders(method, headersFromParams(p.GetHeader())),
 			Body:        p.GetBody(),
 			Concurrence: int(p.GetConcurrency()),
 		}
-		c.startService(name, conf)
+		c.startService(name, conf, p.GetVerbose())
 	case tsgrpc.Action_STOP:
 		c.stopService(name)
 	}
 }
 
 // startService launches a load test (reuses the existing Tsunami engine).
-func (c *OceanClient) startService(name string, conf tshttp.Conf) {
+func (c *OceanClient) startService(name string, conf tshttp.Conf, verbose bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if existing := c.ctrl.services[name]; existing != nil {
 		existing.Stop()
 		delete(c.ctrl.services, name)
 	}
-	log.Printf("start: %s -> %s (%d concurrency)", name, conf.URL, conf.Concurrence)
-	app := &Tsunami{done: false, conf: conf, duration: 3600, refresh: 2, enableReport: false}
+	log.Printf("start: %s -> %s (%d concurrency, verbose=%v)", name, conf.URL, conf.Concurrence, verbose)
+	app := &Tsunami{done: false, conf: conf, duration: 3600, refresh: 2, enableReport: false, verbose: verbose}
 	app.Init(100000)
 	c.ctrl.services[name] = app
 	app.Run()
@@ -192,33 +230,38 @@ func (c *OceanClient) stopAll() {
 
 // serviceMetric snapshots a running service's live stats into a proto Metric.
 func serviceMetric(ts *Tsunami) *tsgrpc.Metric {
-	var avg, min, max float64
-	var numRes, numErr int
-	for _, w := range ts.workers {
-		numRes += w.GetNumRes()
-		numErr += w.GetNumErr()
-		avg += w.GetAvgRes()
-		if w.GetMaxRes() > max {
-			max = w.GetMaxRes()
+	var reqTotal, errTotal, resTotal, sumNanos int64
+	var min, max float64
+	// iterate by pointer so we read each worker's live stats (atomically) rather
+	// than a racy struct copy.
+	for i := range ts.workers {
+		w := &ts.workers[i]
+		reqTotal += int64(w.GetNumReq())
+		errTotal += int64(w.GetNumErr())
+		resTotal += int64(w.GetNumRes())
+		sumNanos += w.GetSumNanos()
+		if m := w.GetMaxRes(); m > max {
+			max = m
 		}
-		if min == 0.0 || w.GetMinRes() < min {
-			min = w.GetMinRes()
+		if mn := w.GetMinRes(); mn > 0 && (min == 0 || mn < min) {
+			min = mn
 		}
 	}
-	n := len(ts.workers)
-	if n > 0 {
-		avg = avg / float64(n)
+	// true request-weighted mean latency (ms) over successful responses
+	avg := 0.0
+	if resTotal > 0 {
+		avg = float64(sumNanos) / float64(resTotal) / 1e6
 	}
 	elapsed := time.Since(ts.start).Seconds()
 	rps := 0.0
 	if elapsed > 0 {
-		rps = float64(numRes) / elapsed
+		rps = float64(reqTotal) / elapsed
 	}
 	return &tsgrpc.Metric{
 		Job:          ts.conf.Name,
-		WorkerCount:  int32(n),
-		RequestCount: int64(numRes),
-		ErrorCount:   int64(numErr),
+		WorkerCount:  int32(len(ts.workers)),
+		RequestCount: reqTotal,
+		ErrorCount:   errTotal,
 		Avg:          avg,
 		Min:          min,
 		Max:          max,
