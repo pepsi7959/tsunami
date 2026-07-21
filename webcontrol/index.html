@@ -79,6 +79,17 @@
     padding: 9px 10px; border-radius: 8px; font-size: 14px;
   }
   .row { display:flex; gap: 10px; } .row > div { flex: 1; }
+  textarea {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
+    padding: 9px 10px; border-radius: 8px; font-size: 13px; resize: vertical; min-height: 74px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
+  .chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; padding:3px 7px;
+    border-radius:6px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2); cursor:pointer; }
+  .chip:hover { color:var(--ink); border-color: rgba(57,135,229,.55); }
+  .hint { font-size:11px; color:var(--muted); margin-top:7px; }
+  .hint code { background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--ink-2); }
   button {
     cursor: pointer; border: none; border-radius: 8px; padding: 10px 15px;
     font-size: 14px; font-weight: 600; color: #fff; margin-top: 14px;
@@ -203,10 +214,14 @@
           <select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
         </div>
         <div><label>Concurrence</label><input id="concurrence" type="number" value="10" min="1" /></div>
-        <div style="display:flex; gap:10px; align-items:flex-end">
-          <button class="start" style="flex:1" onclick="startTest()">▶ Start</button>
-          <button class="stop"  style="flex:1" onclick="stopTest()">■ Stop</button>
-        </div>
+      </div>
+      <label>Request body <span style="color:var(--muted)">— supports {{tokens}}, expanded per request</span></label>
+      <textarea id="body" placeholder='{"email":"user{{seq}}@test.io","id":"{{uuid}}","age":{{randInt 18 65}}}'></textarea>
+      <div class="chips" id="tplChips"></div>
+      <div class="hint">Click a token to insert it. The <b>Target URL</b> supports tokens too, e.g. <code>?rid={{uuid}}</code>. Each request gets fresh values.</div>
+      <div class="row" style="margin-top:12px">
+        <button class="start" style="flex:1" onclick="startTest()">▶ Start</button>
+        <button class="stop"  style="flex:1" onclick="stopTest()">■ Stop</button>
       </div>
     </div>
   </div>
@@ -407,6 +422,7 @@ async function startTest(){
   }
 
   const conf={ name, url:$('url').value.trim(), method:$('method').value, concurrence:parseInt($('concurrence').value,10)||1 };
+  const body=$('body').value; if(body) conf.body=body;   // supports {{tokens}}, expanded per request by the worker
   try{
     const r=await call('/api/v1/start','start',conf);
     if(r.error && r.error.code){ toast('Start failed', r.error.message, 'error'); logline('start failed', r); return; }
@@ -767,6 +783,22 @@ async function rediscoverWorkers(){
     renderWorkers();
   }catch(e){ setConn(false); toast('Rediscover failed', e.message, 'error'); }
 }
+
+/* ---------- template tokens (generated params) ---------- */
+const TPL_TOKENS = ['{{uuid}}','{{seq}}','{{randInt 1 100}}','{{randString 8}}','{{now}}','{{nowMs}}','{{timestamp}}'];
+let lastTpl = 'body';   // which templatable field the token chips insert into
+function insertToken(tok){
+  const el=$(lastTpl); if(!el) return;
+  const s=el.selectionStart ?? el.value.length, e=el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0,s) + tok + el.value.slice(e);
+  const pos=s+tok.length; el.focus(); try{ el.setSelectionRange(pos,pos); }catch(_){}
+}
+function renderChips(){
+  const c=$('tplChips'); if(!c) return; c.innerHTML='';
+  TPL_TOKENS.forEach(t=>{ const b=document.createElement('span'); b.className='chip'; b.textContent=t; b.title='insert '+t; b.onclick=()=>insertToken(t); c.appendChild(b); });
+}
+['url','body'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('focus',()=>lastTpl=id); });
+renderChips();
 
 /* ---------- boot ---------- */
 (function initConns(){

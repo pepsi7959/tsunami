@@ -1,235 +1,228 @@
 package main
 
 import (
-	context "context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"net"
+	"context"
+	"log"
+	"sync"
 	"time"
 
 	tshttp "github.com/tsunami/libs"
 	tsgrpc "github.com/tsunami/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
-//GRPCServer server for gRPC connecion
-type GRPCServer struct {
-	tsgrpc.UnimplementedTSControlServer
-	Endpoint   string
-	Transport  net.Listener
-	GrpcServer *grpc.Server
-	Ctrl       *TSControl
+// OceanClient keeps the worker's single bidirectional stream to an ocean:
+// it dials out, registers, runs load on START commands, stops on STOP, reports
+// metrics up the stream, and — if the stream drops — stops all load (dead-man's
+// switch) before re-attaching.
+type OceanClient struct {
+	ctrl     *TSControl
+	workerID string
+	name     string
+	maxConc  int32
+	report   time.Duration // metrics report interval
+	token    string        // optional attach auth token
+
+	mu sync.Mutex // guards ctrl.services
 }
 
-func methodToString(method tsgrpc.Request_HTTPMethod) string {
-
-	if method == 0 {
-		return "GET"
-	} else if method == 1 {
+func methodName(m tsgrpc.HTTPMethod) string {
+	switch m {
+	case tsgrpc.HTTPMethod_POST:
 		return "POST"
-	} else if method == 2 {
+	case tsgrpc.HTTPMethod_PUT:
 		return "PUT"
-	} else if method == 3 {
+	case tsgrpc.HTTPMethod_DELETE:
 		return "DELETE"
-	} else if method == 4 {
+	case tsgrpc.HTTPMethod_UPDATE:
 		return "UPDATE"
+	default:
+		return "GET"
 	}
-
-	return "Unknown Method"
 }
 
-//Start send start command
-func (s *GRPCServer) Start(context context.Context, req *tsgrpc.Request) (*tsgrpc.Response, error) {
-	fmt.Println("Start Received")
+// Run keeps a worker attached to an ocean. On every (re)connect it calls
+// resolve() to pick an ocean endpoint (a static one, or the least-loaded ocean
+// from etcd discovery), reconnecting on failure.
+func (c *OceanClient) Run(resolve func() string) {
+	for {
+		endpoint := resolve()
+		if endpoint == "" {
+			log.Printf("attach: no ocean available; retrying in 3s")
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		if err := c.attachOnce(endpoint); err != nil {
+			log.Printf("attach: stream to %s ended: %v", endpoint, err)
+		}
+		// dead-man's switch: whenever the stream is gone, stop all load so a
+		// worker can never keep hammering a target without a controlling ocean
+		c.stopAll()
+		time.Sleep(3 * time.Second)
+	}
+}
 
-	tsConf := tshttp.Conf{
-		Name:        req.Params.Name,
-		URL:         req.Params.Url,
-		Protocol:    req.Params.Protocol,
-		Host:        req.Params.Host,
-		Port:        req.Params.Port,
-		Path:        req.Params.Path,
-		Method:      methodToString(req.Params.Method),
-		Body:        req.Params.Body,
-		Concurrence: int(req.Params.MaxConcurrences),
+func (c *OceanClient) attachOnce(endpoint string) error {
+	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	ctx := context.Background()
+	if c.token != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+c.token)
+	}
+	stream, err := tsgrpc.NewTSAttachClient(conn).Attach(ctx)
+	if err != nil {
+		return err
+	}
+	log.Printf("attach: connected to ocean %s as %s (%s), maxConcurrency=%d", endpoint, c.name, c.workerID, c.maxConc)
+
+	// 1) Register
+	if err := stream.Send(&tsgrpc.WorkerMessage{Msg: &tsgrpc.WorkerMessage_Register{
+		Register: &tsgrpc.Register{WorkerId: c.workerID, Name: c.name, MaxConcurrency: c.maxConc},
+	}}); err != nil {
+		return err
 	}
 
-	// If a service with this name is already running here (e.g. a leftover after
-	// the master restarted and lost its state), replace it instead of hard-failing.
-	// Otherwise the name stays permanently unusable until the worker is restarted.
-	if existing := s.Ctrl.services[tsConf.Name]; existing != nil {
-		fmt.Println("Start: replacing existing service ", tsConf.Name)
+	// 2) periodic Report + Heartbeat
+	done := make(chan struct{})
+	defer close(done)
+	go c.reportLoop(stream, done)
+
+	// 3) receive Commands until the stream breaks
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+		if cmd := msg.GetCommand(); cmd != nil {
+			c.handleCommand(cmd)
+		}
+	}
+}
+
+func (c *OceanClient) reportLoop(stream grpc.BidiStreamingClient[tsgrpc.WorkerMessage, tsgrpc.OceanMessage], done <-chan struct{}) {
+	t := time.NewTicker(c.report)
+	defer t.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+			c.mu.Lock()
+			metrics := make([]*tsgrpc.Metric, 0, len(c.ctrl.services))
+			for _, ts := range c.ctrl.services {
+				metrics = append(metrics, serviceMetric(ts))
+			}
+			c.mu.Unlock()
+			for _, m := range metrics {
+				if stream.Send(&tsgrpc.WorkerMessage{Msg: &tsgrpc.WorkerMessage_Report{Report: &tsgrpc.Report{Metric: m}}}) != nil {
+					return
+				}
+			}
+			if stream.Send(&tsgrpc.WorkerMessage{Msg: &tsgrpc.WorkerMessage_Heartbeat{Heartbeat: &tsgrpc.Heartbeat{}}}) != nil {
+				return
+			}
+		}
+	}
+}
+
+func (c *OceanClient) handleCommand(cmd *tsgrpc.Command) {
+	name := cmd.GetJob()
+	switch cmd.GetAction() {
+	case tsgrpc.Action_START:
+		p := cmd.GetParams()
+		conf := tshttp.Conf{
+			Name:        name,
+			URL:         p.GetUrl(),
+			Protocol:    p.GetProtocol(),
+			Host:        p.GetHost(),
+			Port:        p.GetPort(),
+			Path:        p.GetPath(),
+			Method:      methodName(p.GetMethod()),
+			Body:        p.GetBody(),
+			Concurrence: int(p.GetConcurrency()),
+		}
+		c.startService(name, conf)
+	case tsgrpc.Action_STOP:
+		c.stopService(name)
+	}
+}
+
+// startService launches a load test (reuses the existing Tsunami engine).
+func (c *OceanClient) startService(name string, conf tshttp.Conf) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if existing := c.ctrl.services[name]; existing != nil {
 		existing.Stop()
-		if existing.apiServer != nil {
-			existing.apiServer.Stop()
-		}
-		delete(s.Ctrl.services, tsConf.Name)
+		delete(c.ctrl.services, name)
 	}
-
-	go StartApp(tsConf.Name, s.Ctrl, tsConf)
-	data := struct {
-		url  string
-		name string
-	}{
-		url:  "http://" + tshttp.GetIP().String() + ":8091" + APIVersion,
-		name: tsConf.Name,
-	}
-	jdata, _ := json.Marshal(data)
-
-	res := tsgrpc.Response{
-		ErrorCode: 0,
-		Data:      string(jdata),
-	}
-	return &res, nil
+	log.Printf("start: %s -> %s (%d concurrency)", name, conf.URL, conf.Concurrence)
+	app := &Tsunami{done: false, conf: conf, duration: 3600, refresh: 2, enableReport: false}
+	app.Init(100000)
+	c.ctrl.services[name] = app
+	app.Run()
+	go app.GenLoad()
+	go app.GenLoad()
 }
 
-//Stop send stop command
-func (s *GRPCServer) Stop(context context.Context, req *tsgrpc.Request) (*tsgrpc.Response, error) {
-	fmt.Println("Stop Received")
-
-	tsConf := tshttp.Conf{
-		Name:        req.Params.Name,
-		URL:         req.Params.Url,
-		Host:        req.Params.Host,
-		Method:      methodToString(req.Params.Method),
-		Body:        req.Params.Body,
-		Concurrence: int(req.Params.MaxConcurrences),
+func (c *OceanClient) stopService(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ts := c.ctrl.services[name]; ts != nil {
+		log.Printf("stop: %s", name)
+		ts.Stop()
+		delete(c.ctrl.services, name)
 	}
-
-	t := s.Ctrl.services[tsConf.Name]
-	if t != nil {
-		fmt.Println("Stoping service name : ", tsConf.Name)
-		t.Stop()
-		t.apiServer.Stop()
-		delete(s.Ctrl.services, tsConf.Name)
-
-		res := tsgrpc.Response{
-			ErrorCode: 0,
-			Data:      "",
-		}
-
-		return &res, nil
-	}
-
-	return nil, errors.New("not found service")
 }
 
-//Restart send re-start command
-func (s *GRPCServer) Restart(context context.Context, r *tsgrpc.Request) (*tsgrpc.Response, error) {
-	fmt.Println("Restart Received")
-	return nil, nil
+func (c *OceanClient) stopAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for name, ts := range c.ctrl.services {
+		log.Printf("stop (stream lost): %s", name)
+		ts.Stop()
+		delete(c.ctrl.services, name)
+	}
 }
 
-//GetMetrics request to metrics
-func (s *GRPCServer) GetMetrics(context context.Context, req *tsgrpc.Request) (*tsgrpc.Response, error) {
-	fmt.Println("GetMetrics Received")
-
-	ts := s.Ctrl.services[req.Params.Name]
-
-	if ts == nil {
-		return nil, errors.New("not found service")
-	}
-
+// serviceMetric snapshots a running service's live stats into a proto Metric.
+func serviceMetric(ts *Tsunami) *tsgrpc.Metric {
 	var avg, min, max float64
 	var numRes, numErr int
-	//data := make(map[string]string)
-
 	for _, w := range ts.workers {
 		numRes += w.GetNumRes()
 		numErr += w.GetNumErr()
 		avg += w.GetAvgRes()
-
 		if w.GetMaxRes() > max {
 			max = w.GetMaxRes()
 		}
-
 		if min == 0.0 || w.GetMinRes() < min {
 			min = w.GetMinRes()
 		}
 	}
-
-	workers := len(ts.workers)
-	avg = avg / float64(workers)
-	// data["name"] = ts.conf.Name
-	// data["workers_count"] = fmt.Sprintf("%d", workers)
-	// data["errors_count"] = fmt.Sprintf("%d", numErr)
-	// data["avg"] = fmt.Sprintf("%f", avg)
-	// data["min"] = fmt.Sprintf("%f", min)
-	// data["max"] = fmt.Sprintf("%f", max)
-	// data["elaped_time"] = fmt.Sprintf("%f", time.Since(ts.start).Seconds())
-	// data["requests_count"] = fmt.Sprintf("%f", float64(numRes))
-	// data["rps"] = fmt.Sprintf("%f", float64(numRes)/time.Since(ts.start).Seconds())
-
-	jsonStruct := tshttp.Metric{
-		Name:         ts.conf.Name,
-		WorkerCount:  workers,
-		ErrorCount:   numErr,
+	n := len(ts.workers)
+	if n > 0 {
+		avg = avg / float64(n)
+	}
+	elapsed := time.Since(ts.start).Seconds()
+	rps := 0.0
+	if elapsed > 0 {
+		rps = float64(numRes) / elapsed
+	}
+	return &tsgrpc.Metric{
+		Job:          ts.conf.Name,
+		WorkerCount:  int32(n),
+		RequestCount: int64(numRes),
+		ErrorCount:   int64(numErr),
 		Avg:          avg,
 		Min:          min,
 		Max:          max,
-		ElapedTime:   time.Since(ts.start).Seconds(),
-		RequestCount: numRes,
-		Rps:          (float64(numRes) / time.Since(ts.start).Seconds()),
+		Rps:          rps,
+		ElapsedTime:  elapsed,
 	}
-
-	JSONData, err := json.Marshal(&jsonStruct)
-
-	fmt.Printf("%v \n", jsonStruct)
-	fmt.Printf("%v \n", string(JSONData))
-
-	if err != nil {
-		fmt.Println("error marshal: " + err.Error())
-		return nil, err
-	}
-
-	resp := tsgrpc.Response{
-		ErrorCode: 0,
-		Data:      string(JSONData),
-	}
-
-	return &resp, nil
-}
-
-//Register request to metrics
-func (s *GRPCServer) Register(context context.Context, r *tsgrpc.RegisterRequest) (*tsgrpc.Response, error) {
-	return nil, nil
-}
-
-//NewServer create server instance
-func NewServer(endpoint string) *GRPCServer {
-	gRPCServer := GRPCServer{
-		Endpoint: endpoint,
-	}
-	return &gRPCServer
-}
-
-//InitServer initilize gRPC server
-func (s *GRPCServer) InitServer() {
-	transp, err := net.Listen("tcp", s.Endpoint)
-
-	if err != nil {
-		panic(err)
-	}
-
-	s.GrpcServer = grpc.NewServer()
-	s.Transport = transp
-}
-
-//StartServer start gRPC server
-func (s *GRPCServer) StartServer() {
-
-	fmt.Println("gRPC listen: ", s.Endpoint)
-
-	tsgrpc.RegisterTSControlServer(s.GrpcServer, s)
-
-	if err := s.GrpcServer.Serve(s.Transport); err != nil {
-		panic(err)
-	}
-
-}
-
-//StopServer stop gRPC server
-func (s *GRPCServer) StopServer() {
-	s.GrpcServer.GracefulStop()
 }

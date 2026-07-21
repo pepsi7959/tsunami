@@ -1,0 +1,12 @@
+# Remote worker: it needs ONLY the etcd endpoint. It discovers the oceans from
+# etcd, selects the one with the most free connection slots, and dials it.
+name: worker-a
+id: CHANGE_ME_UNIQUE_ID # must be unique per worker
+concurence: 300 # this worker's max concurrency (load capacity)
+registry:
+  endpoints:
+    - CHANGE_ME_PUBLIC_HOST:2379 # the droplet's public etcd
+report:
+  interval: 2 # metrics report interval (seconds)
+auth:
+  token: CHANGE_ME_SHARED_TOKEN # must match the oceans' token

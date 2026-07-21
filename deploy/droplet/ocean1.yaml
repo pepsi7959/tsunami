@@ -1,0 +1,17 @@
+name: ocean-1
+id: ocean-1
+endpoints:
+  http: 0.0.0.0:8080 # client API + web control
+  grpc: 0.0.0.0:8050 # worker attach stream (bind)
+advertise:
+  # PUBLIC address workers dial to reach THIS ocean's attach port.
+  # Set to your droplet's public IP/host + this ocean's *published* grpc port.
+  grpc: CHANGE_ME_PUBLIC_HOST:8050
+max_connections: 2000
+registry:
+  endpoints:
+    - etcd:2379 # oceans reach etcd over the compose network
+lease:
+  ttl: 10
+auth:
+  token: CHANGE_ME_SHARED_TOKEN # must match the workers' token

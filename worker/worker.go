@@ -31,6 +31,11 @@ type Worker struct {
 	Done   *bool
 	client *fasthttp.HostClient
 	stat   Stat
+
+	// compiled request templates (URL, body, header values); see tmpl.go
+	urlTmpl     *Template
+	bodyTmpl    *Template
+	headerTmpls map[string]*Template
 }
 
 func (w *Worker) url() string {
@@ -99,6 +104,7 @@ func (w *Worker) UpdateStat(resTime int64) {
 //Run invoke the worker
 func (w *Worker) Run() {
 	fmt.Println("Run Worker...")
+	w.prepare()
 	for *w.Done != true {
 		select {
 		case <-*w.jobs:
@@ -108,18 +114,30 @@ func (w *Worker) Run() {
 	fmt.Println("quit worker")
 }
 
+// prepare compiles the request templates once, before the request loop starts.
+func (w *Worker) prepare() {
+	w.urlTmpl = Compile(w.url())
+	w.bodyTmpl = Compile(w.conf.Body)
+	if len(w.conf.Headers) > 0 {
+		w.headerTmpls = make(map[string]*Template, len(w.conf.Headers))
+		for k, v := range w.conf.Headers {
+			w.headerTmpls[k] = Compile(v)
+		}
+	}
+}
+
 func (w *Worker) do() {
 	req := fasthttp.AcquireRequest()
 
 	h := &req.Header
 
 	h.SetMethod(w.conf.Method)
-	for k, v := range w.conf.Headers {
-		h.Add(k, v)
+	for k, t := range w.headerTmpls {
+		h.Add(k, t.Render())
 	}
 
-	req.SetRequestURI(w.url())
-	req.SetBodyString(w.conf.Body)
+	req.SetRequestURI(w.urlTmpl.Render())
+	req.SetBodyString(w.bodyTmpl.Render())
 
 	resp := fasthttp.AcquireResponse()
 	start := time.Now()

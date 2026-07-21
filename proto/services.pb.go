@@ -9,7 +9,6 @@ package tsgrpc
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -22,78 +21,26 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type Request_CommandType int32
+type HTTPMethod int32
 
 const (
-	Request_START        Request_CommandType = 0
-	Request_RESTART      Request_CommandType = 1
-	Request_STOP         Request_CommandType = 2
-	Request_GET_METRICES Request_CommandType = 3
+	HTTPMethod_GET    HTTPMethod = 0
+	HTTPMethod_POST   HTTPMethod = 1
+	HTTPMethod_PUT    HTTPMethod = 2
+	HTTPMethod_DELETE HTTPMethod = 3
+	HTTPMethod_UPDATE HTTPMethod = 4
 )
 
-// Enum value maps for Request_CommandType.
+// Enum value maps for HTTPMethod.
 var (
-	Request_CommandType_name = map[int32]string{
-		0: "START",
-		1: "RESTART",
-		2: "STOP",
-		3: "GET_METRICES",
-	}
-	Request_CommandType_value = map[string]int32{
-		"START":        0,
-		"RESTART":      1,
-		"STOP":         2,
-		"GET_METRICES": 3,
-	}
-)
-
-func (x Request_CommandType) Enum() *Request_CommandType {
-	p := new(Request_CommandType)
-	*p = x
-	return p
-}
-
-func (x Request_CommandType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (Request_CommandType) Descriptor() protoreflect.EnumDescriptor {
-	return file_services_proto_enumTypes[0].Descriptor()
-}
-
-func (Request_CommandType) Type() protoreflect.EnumType {
-	return &file_services_proto_enumTypes[0]
-}
-
-func (x Request_CommandType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use Request_CommandType.Descriptor instead.
-func (Request_CommandType) EnumDescriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{0, 0}
-}
-
-type Request_HTTPMethod int32
-
-const (
-	Request_GET    Request_HTTPMethod = 0
-	Request_POST   Request_HTTPMethod = 1
-	Request_PUT    Request_HTTPMethod = 2
-	Request_DELETE Request_HTTPMethod = 3
-	Request_UPDATE Request_HTTPMethod = 4
-)
-
-// Enum value maps for Request_HTTPMethod.
-var (
-	Request_HTTPMethod_name = map[int32]string{
+	HTTPMethod_name = map[int32]string{
 		0: "GET",
 		1: "POST",
 		2: "PUT",
 		3: "DELETE",
 		4: "UPDATE",
 	}
-	Request_HTTPMethod_value = map[string]int32{
+	HTTPMethod_value = map[string]int32{
 		"GET":    0,
 		"POST":   1,
 		"PUT":    2,
@@ -102,206 +49,81 @@ var (
 	}
 )
 
-func (x Request_HTTPMethod) Enum() *Request_HTTPMethod {
-	p := new(Request_HTTPMethod)
+func (x HTTPMethod) Enum() *HTTPMethod {
+	p := new(HTTPMethod)
 	*p = x
 	return p
 }
 
-func (x Request_HTTPMethod) String() string {
+func (x HTTPMethod) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (Request_HTTPMethod) Descriptor() protoreflect.EnumDescriptor {
-	return file_services_proto_enumTypes[1].Descriptor()
+func (HTTPMethod) Descriptor() protoreflect.EnumDescriptor {
+	return file_services_proto_enumTypes[0].Descriptor()
 }
 
-func (Request_HTTPMethod) Type() protoreflect.EnumType {
-	return &file_services_proto_enumTypes[1]
+func (HTTPMethod) Type() protoreflect.EnumType {
+	return &file_services_proto_enumTypes[0]
 }
 
-func (x Request_HTTPMethod) Number() protoreflect.EnumNumber {
+func (x HTTPMethod) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use Request_HTTPMethod.Descriptor instead.
-func (Request_HTTPMethod) EnumDescriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{0, 1}
-}
-
-type Request struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Command       Request_CommandType    `protobuf:"varint,1,opt,name=command,proto3,enum=tsgrpc.Request_CommandType" json:"command,omitempty"`
-	Params        *Request_Params        `protobuf:"bytes,2,opt,name=params,proto3" json:"params,omitempty"`
-	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Request) Reset() {
-	*x = Request{}
-	mi := &file_services_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Request) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Request) ProtoMessage() {}
-
-func (x *Request) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Request.ProtoReflect.Descriptor instead.
-func (*Request) Descriptor() ([]byte, []int) {
+// Deprecated: Use HTTPMethod.Descriptor instead.
+func (HTTPMethod) EnumDescriptor() ([]byte, []int) {
 	return file_services_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Request) GetCommand() Request_CommandType {
-	if x != nil {
-		return x.Command
+// ---------- ocean -> worker ----------
+type Action int32
+
+const (
+	Action_START Action = 0
+	Action_STOP  Action = 1
+)
+
+// Enum value maps for Action.
+var (
+	Action_name = map[int32]string{
+		0: "START",
+		1: "STOP",
 	}
-	return Request_START
-}
-
-func (x *Request) GetParams() *Request_Params {
-	if x != nil {
-		return x.Params
+	Action_value = map[string]int32{
+		"START": 0,
+		"STOP":  1,
 	}
-	return nil
+)
+
+func (x Action) Enum() *Action {
+	p := new(Action)
+	*p = x
+	return p
 }
 
-func (x *Request) GetTimestamp() *timestamppb.Timestamp {
-	if x != nil {
-		return x.Timestamp
-	}
-	return nil
+func (x Action) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-type Response struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ErrorCode     int32                  `protobuf:"varint,1,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
-	Data          string                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+func (Action) Descriptor() protoreflect.EnumDescriptor {
+	return file_services_proto_enumTypes[1].Descriptor()
 }
 
-func (x *Response) Reset() {
-	*x = Response{}
-	mi := &file_services_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
+func (Action) Type() protoreflect.EnumType {
+	return &file_services_proto_enumTypes[1]
 }
 
-func (x *Response) String() string {
-	return protoimpl.X.MessageStringOf(x)
+func (x Action) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
 }
 
-func (*Response) ProtoMessage() {}
-
-func (x *Response) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Response.ProtoReflect.Descriptor instead.
-func (*Response) Descriptor() ([]byte, []int) {
+// Deprecated: Use Action.Descriptor instead.
+func (Action) EnumDescriptor() ([]byte, []int) {
 	return file_services_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *Response) GetErrorCode() int32 {
-	if x != nil {
-		return x.ErrorCode
-	}
-	return 0
-}
-
-func (x *Response) GetData() string {
-	if x != nil {
-		return x.Data
-	}
-	return ""
-}
-
-type RegisterRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Id              int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name            string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	MaxConcurrences int32                  `protobuf:"varint,3,opt,name=maxConcurrences,proto3" json:"maxConcurrences,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *RegisterRequest) Reset() {
-	*x = RegisterRequest{}
-	mi := &file_services_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RegisterRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RegisterRequest) ProtoMessage() {}
-
-func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
-func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *RegisterRequest) GetId() int32 {
-	if x != nil {
-		return x.Id
-	}
-	return 0
-}
-
-func (x *RegisterRequest) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *RegisterRequest) GetMaxConcurrences() int32 {
-	if x != nil {
-		return x.MaxConcurrences
-	}
-	return 0
-}
-
-type Request_HTTPHeader struct {
+type HTTPHeader struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
@@ -309,21 +131,21 @@ type Request_HTTPHeader struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Request_HTTPHeader) Reset() {
-	*x = Request_HTTPHeader{}
-	mi := &file_services_proto_msgTypes[3]
+func (x *HTTPHeader) Reset() {
+	*x = HTTPHeader{}
+	mi := &file_services_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Request_HTTPHeader) String() string {
+func (x *HTTPHeader) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Request_HTTPHeader) ProtoMessage() {}
+func (*HTTPHeader) ProtoMessage() {}
 
-func (x *Request_HTTPHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[3]
+func (x *HTTPHeader) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -334,55 +156,332 @@ func (x *Request_HTTPHeader) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Request_HTTPHeader.ProtoReflect.Descriptor instead.
-func (*Request_HTTPHeader) Descriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{0, 0}
+// Deprecated: Use HTTPHeader.ProtoReflect.Descriptor instead.
+func (*HTTPHeader) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Request_HTTPHeader) GetKey() string {
+func (x *HTTPHeader) GetKey() string {
 	if x != nil {
 		return x.Key
 	}
 	return ""
 }
 
-func (x *Request_HTTPHeader) GetValue() string {
+func (x *HTTPHeader) GetValue() string {
 	if x != nil {
 		return x.Value
 	}
 	return ""
 }
 
-type Request_Params struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Name            string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Url             string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
-	Method          Request_HTTPMethod     `protobuf:"varint,3,opt,name=method,proto3,enum=tsgrpc.Request_HTTPMethod" json:"method,omitempty"`
-	Protocol        string                 `protobuf:"bytes,4,opt,name=protocol,proto3" json:"protocol,omitempty"`
-	Host            string                 `protobuf:"bytes,5,opt,name=host,proto3" json:"host,omitempty"`
-	Port            string                 `protobuf:"bytes,6,opt,name=port,proto3" json:"port,omitempty"`
-	Path            string                 `protobuf:"bytes,7,opt,name=path,proto3" json:"path,omitempty"`
-	MaxConcurrences int32                  `protobuf:"varint,8,opt,name=maxConcurrences,proto3" json:"maxConcurrences,omitempty"`
-	Header          []*Request_HTTPHeader  `protobuf:"bytes,9,rep,name=header,proto3" json:"header,omitempty"`
-	Body            string                 `protobuf:"bytes,10,opt,name=body,proto3" json:"body,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+// Params describes a load test (carried by a START command).
+type Params struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	Method        HTTPMethod             `protobuf:"varint,3,opt,name=method,proto3,enum=tsgrpc.HTTPMethod" json:"method,omitempty"`
+	Protocol      string                 `protobuf:"bytes,4,opt,name=protocol,proto3" json:"protocol,omitempty"`
+	Host          string                 `protobuf:"bytes,5,opt,name=host,proto3" json:"host,omitempty"`
+	Port          string                 `protobuf:"bytes,6,opt,name=port,proto3" json:"port,omitempty"`
+	Path          string                 `protobuf:"bytes,7,opt,name=path,proto3" json:"path,omitempty"`
+	Concurrency   int32                  `protobuf:"varint,8,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
+	Header        []*HTTPHeader          `protobuf:"bytes,9,rep,name=header,proto3" json:"header,omitempty"`
+	Body          string                 `protobuf:"bytes,10,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Request_Params) Reset() {
-	*x = Request_Params{}
+func (x *Params) Reset() {
+	*x = Params{}
+	mi := &file_services_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Params) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Params) ProtoMessage() {}
+
+func (x *Params) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Params.ProtoReflect.Descriptor instead.
+func (*Params) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Params) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Params) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *Params) GetMethod() HTTPMethod {
+	if x != nil {
+		return x.Method
+	}
+	return HTTPMethod_GET
+}
+
+func (x *Params) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+func (x *Params) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *Params) GetPort() string {
+	if x != nil {
+		return x.Port
+	}
+	return ""
+}
+
+func (x *Params) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *Params) GetConcurrency() int32 {
+	if x != nil {
+		return x.Concurrency
+	}
+	return 0
+}
+
+func (x *Params) GetHeader() []*HTTPHeader {
+	if x != nil {
+		return x.Header
+	}
+	return nil
+}
+
+func (x *Params) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+// ---------- worker -> ocean ----------
+type Register struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId       string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	MaxConcurrency int32                  `protobuf:"varint,3,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Register) Reset() {
+	*x = Register{}
+	mi := &file_services_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Register) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Register) ProtoMessage() {}
+
+func (x *Register) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Register.ProtoReflect.Descriptor instead.
+func (*Register) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Register) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *Register) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Register) GetMaxConcurrency() int32 {
+	if x != nil {
+		return x.MaxConcurrency
+	}
+	return 0
+}
+
+type Metric struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Job           string                 `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
+	WorkerCount   int32                  `protobuf:"varint,2,opt,name=worker_count,json=workerCount,proto3" json:"worker_count,omitempty"`
+	RequestCount  int64                  `protobuf:"varint,3,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
+	ErrorCount    int64                  `protobuf:"varint,4,opt,name=error_count,json=errorCount,proto3" json:"error_count,omitempty"`
+	Avg           float64                `protobuf:"fixed64,5,opt,name=avg,proto3" json:"avg,omitempty"`
+	Min           float64                `protobuf:"fixed64,6,opt,name=min,proto3" json:"min,omitempty"`
+	Max           float64                `protobuf:"fixed64,7,opt,name=max,proto3" json:"max,omitempty"`
+	Rps           float64                `protobuf:"fixed64,8,opt,name=rps,proto3" json:"rps,omitempty"`
+	ElapsedTime   float64                `protobuf:"fixed64,9,opt,name=elapsed_time,json=elapsedTime,proto3" json:"elapsed_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Metric) Reset() {
+	*x = Metric{}
+	mi := &file_services_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Metric) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Metric) ProtoMessage() {}
+
+func (x *Metric) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Metric.ProtoReflect.Descriptor instead.
+func (*Metric) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Metric) GetJob() string {
+	if x != nil {
+		return x.Job
+	}
+	return ""
+}
+
+func (x *Metric) GetWorkerCount() int32 {
+	if x != nil {
+		return x.WorkerCount
+	}
+	return 0
+}
+
+func (x *Metric) GetRequestCount() int64 {
+	if x != nil {
+		return x.RequestCount
+	}
+	return 0
+}
+
+func (x *Metric) GetErrorCount() int64 {
+	if x != nil {
+		return x.ErrorCount
+	}
+	return 0
+}
+
+func (x *Metric) GetAvg() float64 {
+	if x != nil {
+		return x.Avg
+	}
+	return 0
+}
+
+func (x *Metric) GetMin() float64 {
+	if x != nil {
+		return x.Min
+	}
+	return 0
+}
+
+func (x *Metric) GetMax() float64 {
+	if x != nil {
+		return x.Max
+	}
+	return 0
+}
+
+func (x *Metric) GetRps() float64 {
+	if x != nil {
+		return x.Rps
+	}
+	return 0
+}
+
+func (x *Metric) GetElapsedTime() float64 {
+	if x != nil {
+		return x.ElapsedTime
+	}
+	return 0
+}
+
+type Report struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Metric        *Metric                `protobuf:"bytes,1,opt,name=metric,proto3" json:"metric,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Report) Reset() {
+	*x = Report{}
 	mi := &file_services_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Request_Params) String() string {
+func (x *Report) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Request_Params) ProtoMessage() {}
+func (*Report) ProtoMessage() {}
 
-func (x *Request_Params) ProtoReflect() protoreflect.Message {
+func (x *Report) ProtoReflect() protoreflect.Message {
 	mi := &file_services_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -394,111 +493,338 @@ func (x *Request_Params) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Request_Params.ProtoReflect.Descriptor instead.
-func (*Request_Params) Descriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{0, 1}
+// Deprecated: Use Report.ProtoReflect.Descriptor instead.
+func (*Report) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *Request_Params) GetName() string {
+func (x *Report) GetMetric() *Metric {
 	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *Request_Params) GetUrl() string {
-	if x != nil {
-		return x.Url
-	}
-	return ""
-}
-
-func (x *Request_Params) GetMethod() Request_HTTPMethod {
-	if x != nil {
-		return x.Method
-	}
-	return Request_GET
-}
-
-func (x *Request_Params) GetProtocol() string {
-	if x != nil {
-		return x.Protocol
-	}
-	return ""
-}
-
-func (x *Request_Params) GetHost() string {
-	if x != nil {
-		return x.Host
-	}
-	return ""
-}
-
-func (x *Request_Params) GetPort() string {
-	if x != nil {
-		return x.Port
-	}
-	return ""
-}
-
-func (x *Request_Params) GetPath() string {
-	if x != nil {
-		return x.Path
-	}
-	return ""
-}
-
-func (x *Request_Params) GetMaxConcurrences() int32 {
-	if x != nil {
-		return x.MaxConcurrences
-	}
-	return 0
-}
-
-func (x *Request_Params) GetHeader() []*Request_HTTPHeader {
-	if x != nil {
-		return x.Header
+		return x.Metric
 	}
 	return nil
 }
 
-func (x *Request_Params) GetBody() string {
+type Heartbeat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ts            int64                  `protobuf:"varint,1,opt,name=ts,proto3" json:"ts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Heartbeat) Reset() {
+	*x = Heartbeat{}
+	mi := &file_services_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Heartbeat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Heartbeat) ProtoMessage() {}
+
+func (x *Heartbeat) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[5]
 	if x != nil {
-		return x.Body
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
+func (*Heartbeat) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Heartbeat) GetTs() int64 {
+	if x != nil {
+		return x.Ts
+	}
+	return 0
+}
+
+type WorkerMessage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Msg:
+	//
+	//	*WorkerMessage_Register
+	//	*WorkerMessage_Report
+	//	*WorkerMessage_Heartbeat
+	Msg           isWorkerMessage_Msg `protobuf_oneof:"msg"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerMessage) Reset() {
+	*x = WorkerMessage{}
+	mi := &file_services_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerMessage) ProtoMessage() {}
+
+func (x *WorkerMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerMessage.ProtoReflect.Descriptor instead.
+func (*WorkerMessage) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *WorkerMessage) GetMsg() isWorkerMessage_Msg {
+	if x != nil {
+		return x.Msg
+	}
+	return nil
+}
+
+func (x *WorkerMessage) GetRegister() *Register {
+	if x != nil {
+		if x, ok := x.Msg.(*WorkerMessage_Register); ok {
+			return x.Register
+		}
+	}
+	return nil
+}
+
+func (x *WorkerMessage) GetReport() *Report {
+	if x != nil {
+		if x, ok := x.Msg.(*WorkerMessage_Report); ok {
+			return x.Report
+		}
+	}
+	return nil
+}
+
+func (x *WorkerMessage) GetHeartbeat() *Heartbeat {
+	if x != nil {
+		if x, ok := x.Msg.(*WorkerMessage_Heartbeat); ok {
+			return x.Heartbeat
+		}
+	}
+	return nil
+}
+
+type isWorkerMessage_Msg interface {
+	isWorkerMessage_Msg()
+}
+
+type WorkerMessage_Register struct {
+	Register *Register `protobuf:"bytes,1,opt,name=register,proto3,oneof"`
+}
+
+type WorkerMessage_Report struct {
+	Report *Report `protobuf:"bytes,2,opt,name=report,proto3,oneof"`
+}
+
+type WorkerMessage_Heartbeat struct {
+	Heartbeat *Heartbeat `protobuf:"bytes,3,opt,name=heartbeat,proto3,oneof"`
+}
+
+func (*WorkerMessage_Register) isWorkerMessage_Msg() {}
+
+func (*WorkerMessage_Report) isWorkerMessage_Msg() {}
+
+func (*WorkerMessage_Heartbeat) isWorkerMessage_Msg() {}
+
+type Command struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Action        Action                 `protobuf:"varint,1,opt,name=action,proto3,enum=tsgrpc.Action" json:"action,omitempty"`
+	Job           string                 `protobuf:"bytes,2,opt,name=job,proto3" json:"job,omitempty"`
+	Params        *Params                `protobuf:"bytes,3,opt,name=params,proto3" json:"params,omitempty"` // set for START
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Command) Reset() {
+	*x = Command{}
+	mi := &file_services_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Command) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Command) ProtoMessage() {}
+
+func (x *Command) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Command.ProtoReflect.Descriptor instead.
+func (*Command) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *Command) GetAction() Action {
+	if x != nil {
+		return x.Action
+	}
+	return Action_START
+}
+
+func (x *Command) GetJob() string {
+	if x != nil {
+		return x.Job
 	}
 	return ""
 }
+
+func (x *Command) GetParams() *Params {
+	if x != nil {
+		return x.Params
+	}
+	return nil
+}
+
+type OceanMessage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Msg:
+	//
+	//	*OceanMessage_Command
+	Msg           isOceanMessage_Msg `protobuf_oneof:"msg"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OceanMessage) Reset() {
+	*x = OceanMessage{}
+	mi := &file_services_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OceanMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OceanMessage) ProtoMessage() {}
+
+func (x *OceanMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OceanMessage.ProtoReflect.Descriptor instead.
+func (*OceanMessage) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *OceanMessage) GetMsg() isOceanMessage_Msg {
+	if x != nil {
+		return x.Msg
+	}
+	return nil
+}
+
+func (x *OceanMessage) GetCommand() *Command {
+	if x != nil {
+		if x, ok := x.Msg.(*OceanMessage_Command); ok {
+			return x.Command
+		}
+	}
+	return nil
+}
+
+type isOceanMessage_Msg interface {
+	isOceanMessage_Msg()
+}
+
+type OceanMessage_Command struct {
+	Command *Command `protobuf:"bytes,1,opt,name=command,proto3,oneof"`
+}
+
+func (*OceanMessage_Command) isOceanMessage_Msg() {}
 
 var File_services_proto protoreflect.FileDescriptor
 
 const file_services_proto_rawDesc = "" +
 	"\n" +
-	"\x0eservices.proto\x12\x06tsgrpc\x1a\x1fgoogle/protobuf/timestamp.proto\"\x94\x05\n" +
-	"\aRequest\x125\n" +
-	"\acommand\x18\x01 \x01(\x0e2\x1b.tsgrpc.Request.CommandTypeR\acommand\x12.\n" +
-	"\x06params\x18\x02 \x01(\v2\x16.tsgrpc.Request.ParamsR\x06params\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x1a4\n" +
+	"\x0eservices.proto\x12\x06tsgrpc\"4\n" +
 	"\n" +
 	"HTTPHeader\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\x1a\xac\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\x94\x02\n" +
 	"\x06Params\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\x122\n" +
-	"\x06method\x18\x03 \x01(\x0e2\x1a.tsgrpc.Request.HTTPMethodR\x06method\x12\x1a\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12*\n" +
+	"\x06method\x18\x03 \x01(\x0e2\x12.tsgrpc.HTTPMethodR\x06method\x12\x1a\n" +
 	"\bprotocol\x18\x04 \x01(\tR\bprotocol\x12\x12\n" +
 	"\x04host\x18\x05 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x06 \x01(\tR\x04port\x12\x12\n" +
-	"\x04path\x18\a \x01(\tR\x04path\x12(\n" +
-	"\x0fmaxConcurrences\x18\b \x01(\x05R\x0fmaxConcurrences\x122\n" +
-	"\x06header\x18\t \x03(\v2\x1a.tsgrpc.Request.HTTPHeaderR\x06header\x12\x12\n" +
+	"\x04path\x18\a \x01(\tR\x04path\x12 \n" +
+	"\vconcurrency\x18\b \x01(\x05R\vconcurrency\x12*\n" +
+	"\x06header\x18\t \x03(\v2\x12.tsgrpc.HTTPHeaderR\x06header\x12\x12\n" +
 	"\x04body\x18\n" +
-	" \x01(\tR\x04body\"A\n" +
-	"\vCommandType\x12\t\n" +
-	"\x05START\x10\x00\x12\v\n" +
-	"\aRESTART\x10\x01\x12\b\n" +
-	"\x04STOP\x10\x02\x12\x10\n" +
-	"\fGET_METRICES\x10\x03\"@\n" +
+	" \x01(\tR\x04body\"d\n" +
+	"\bRegister\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12'\n" +
+	"\x0fmax_concurrency\x18\x03 \x01(\x05R\x0emaxConcurrency\"\xee\x01\n" +
+	"\x06Metric\x12\x10\n" +
+	"\x03job\x18\x01 \x01(\tR\x03job\x12!\n" +
+	"\fworker_count\x18\x02 \x01(\x05R\vworkerCount\x12#\n" +
+	"\rrequest_count\x18\x03 \x01(\x03R\frequestCount\x12\x1f\n" +
+	"\verror_count\x18\x04 \x01(\x03R\n" +
+	"errorCount\x12\x10\n" +
+	"\x03avg\x18\x05 \x01(\x01R\x03avg\x12\x10\n" +
+	"\x03min\x18\x06 \x01(\x01R\x03min\x12\x10\n" +
+	"\x03max\x18\a \x01(\x01R\x03max\x12\x10\n" +
+	"\x03rps\x18\b \x01(\x01R\x03rps\x12!\n" +
+	"\felapsed_time\x18\t \x01(\x01R\velapsedTime\"0\n" +
+	"\x06Report\x12&\n" +
+	"\x06metric\x18\x01 \x01(\v2\x0e.tsgrpc.MetricR\x06metric\"\x1b\n" +
+	"\tHeartbeat\x12\x0e\n" +
+	"\x02ts\x18\x01 \x01(\x03R\x02ts\"\xa3\x01\n" +
+	"\rWorkerMessage\x12.\n" +
+	"\bregister\x18\x01 \x01(\v2\x10.tsgrpc.RegisterH\x00R\bregister\x12(\n" +
+	"\x06report\x18\x02 \x01(\v2\x0e.tsgrpc.ReportH\x00R\x06report\x121\n" +
+	"\theartbeat\x18\x03 \x01(\v2\x11.tsgrpc.HeartbeatH\x00R\theartbeatB\x05\n" +
+	"\x03msg\"k\n" +
+	"\aCommand\x12&\n" +
+	"\x06action\x18\x01 \x01(\x0e2\x0e.tsgrpc.ActionR\x06action\x12\x10\n" +
+	"\x03job\x18\x02 \x01(\tR\x03job\x12&\n" +
+	"\x06params\x18\x03 \x01(\v2\x0e.tsgrpc.ParamsR\x06params\"B\n" +
+	"\fOceanMessage\x12+\n" +
+	"\acommand\x18\x01 \x01(\v2\x0f.tsgrpc.CommandH\x00R\acommandB\x05\n" +
+	"\x03msg*@\n" +
 	"\n" +
 	"HTTPMethod\x12\a\n" +
 	"\x03GET\x10\x00\x12\b\n" +
@@ -507,22 +833,12 @@ const file_services_proto_rawDesc = "" +
 	"\n" +
 	"\x06DELETE\x10\x03\x12\n" +
 	"\n" +
-	"\x06UPDATE\x10\x04\"=\n" +
-	"\bResponse\x12\x1d\n" +
-	"\n" +
-	"error_code\x18\x01 \x01(\x05R\terrorCode\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\tR\x04data\"_\n" +
-	"\x0fRegisterRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12(\n" +
-	"\x0fmaxConcurrences\x18\x03 \x01(\x05R\x0fmaxConcurrences2\x82\x02\n" +
-	"\tTSControl\x12,\n" +
-	"\x05Start\x12\x0f.tsgrpc.Request\x1a\x10.tsgrpc.Response\"\x00\x12+\n" +
-	"\x04Stop\x12\x0f.tsgrpc.Request\x1a\x10.tsgrpc.Response\"\x00\x12.\n" +
-	"\aRestart\x12\x0f.tsgrpc.Request\x1a\x10.tsgrpc.Response\"\x00\x121\n" +
-	"\n" +
-	"GetMetrics\x12\x0f.tsgrpc.Request\x1a\x10.tsgrpc.Response\"\x00\x127\n" +
-	"\bRegister\x12\x17.tsgrpc.RegisterRequest\x1a\x10.tsgrpc.Response\"\x00B!Z\x1fgithub.com/tsunami/proto;tsgrpcb\x06proto3"
+	"\x06UPDATE\x10\x04*\x1d\n" +
+	"\x06Action\x12\t\n" +
+	"\x05START\x10\x00\x12\b\n" +
+	"\x04STOP\x10\x012G\n" +
+	"\bTSAttach\x12;\n" +
+	"\x06Attach\x12\x15.tsgrpc.WorkerMessage\x1a\x14.tsgrpc.OceanMessage\"\x00(\x010\x01B!Z\x1fgithub.com/tsunami/proto;tsgrpcb\x06proto3"
 
 var (
 	file_services_proto_rawDescOnce sync.Once
@@ -537,38 +853,37 @@ func file_services_proto_rawDescGZIP() []byte {
 }
 
 var file_services_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_services_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_services_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_services_proto_goTypes = []any{
-	(Request_CommandType)(0),      // 0: tsgrpc.Request.CommandType
-	(Request_HTTPMethod)(0),       // 1: tsgrpc.Request.HTTPMethod
-	(*Request)(nil),               // 2: tsgrpc.Request
-	(*Response)(nil),              // 3: tsgrpc.Response
-	(*RegisterRequest)(nil),       // 4: tsgrpc.RegisterRequest
-	(*Request_HTTPHeader)(nil),    // 5: tsgrpc.Request.HTTPHeader
-	(*Request_Params)(nil),        // 6: tsgrpc.Request.Params
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(HTTPMethod)(0),       // 0: tsgrpc.HTTPMethod
+	(Action)(0),           // 1: tsgrpc.Action
+	(*HTTPHeader)(nil),    // 2: tsgrpc.HTTPHeader
+	(*Params)(nil),        // 3: tsgrpc.Params
+	(*Register)(nil),      // 4: tsgrpc.Register
+	(*Metric)(nil),        // 5: tsgrpc.Metric
+	(*Report)(nil),        // 6: tsgrpc.Report
+	(*Heartbeat)(nil),     // 7: tsgrpc.Heartbeat
+	(*WorkerMessage)(nil), // 8: tsgrpc.WorkerMessage
+	(*Command)(nil),       // 9: tsgrpc.Command
+	(*OceanMessage)(nil),  // 10: tsgrpc.OceanMessage
 }
 var file_services_proto_depIdxs = []int32{
-	0,  // 0: tsgrpc.Request.command:type_name -> tsgrpc.Request.CommandType
-	6,  // 1: tsgrpc.Request.params:type_name -> tsgrpc.Request.Params
-	7,  // 2: tsgrpc.Request.timestamp:type_name -> google.protobuf.Timestamp
-	1,  // 3: tsgrpc.Request.Params.method:type_name -> tsgrpc.Request.HTTPMethod
-	5,  // 4: tsgrpc.Request.Params.header:type_name -> tsgrpc.Request.HTTPHeader
-	2,  // 5: tsgrpc.TSControl.Start:input_type -> tsgrpc.Request
-	2,  // 6: tsgrpc.TSControl.Stop:input_type -> tsgrpc.Request
-	2,  // 7: tsgrpc.TSControl.Restart:input_type -> tsgrpc.Request
-	2,  // 8: tsgrpc.TSControl.GetMetrics:input_type -> tsgrpc.Request
-	4,  // 9: tsgrpc.TSControl.Register:input_type -> tsgrpc.RegisterRequest
-	3,  // 10: tsgrpc.TSControl.Start:output_type -> tsgrpc.Response
-	3,  // 11: tsgrpc.TSControl.Stop:output_type -> tsgrpc.Response
-	3,  // 12: tsgrpc.TSControl.Restart:output_type -> tsgrpc.Response
-	3,  // 13: tsgrpc.TSControl.GetMetrics:output_type -> tsgrpc.Response
-	3,  // 14: tsgrpc.TSControl.Register:output_type -> tsgrpc.Response
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	0,  // 0: tsgrpc.Params.method:type_name -> tsgrpc.HTTPMethod
+	2,  // 1: tsgrpc.Params.header:type_name -> tsgrpc.HTTPHeader
+	5,  // 2: tsgrpc.Report.metric:type_name -> tsgrpc.Metric
+	4,  // 3: tsgrpc.WorkerMessage.register:type_name -> tsgrpc.Register
+	6,  // 4: tsgrpc.WorkerMessage.report:type_name -> tsgrpc.Report
+	7,  // 5: tsgrpc.WorkerMessage.heartbeat:type_name -> tsgrpc.Heartbeat
+	1,  // 6: tsgrpc.Command.action:type_name -> tsgrpc.Action
+	3,  // 7: tsgrpc.Command.params:type_name -> tsgrpc.Params
+	9,  // 8: tsgrpc.OceanMessage.command:type_name -> tsgrpc.Command
+	8,  // 9: tsgrpc.TSAttach.Attach:input_type -> tsgrpc.WorkerMessage
+	10, // 10: tsgrpc.TSAttach.Attach:output_type -> tsgrpc.OceanMessage
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_services_proto_init() }
@@ -576,13 +891,21 @@ func file_services_proto_init() {
 	if File_services_proto != nil {
 		return
 	}
+	file_services_proto_msgTypes[6].OneofWrappers = []any{
+		(*WorkerMessage_Register)(nil),
+		(*WorkerMessage_Report)(nil),
+		(*WorkerMessage_Heartbeat)(nil),
+	}
+	file_services_proto_msgTypes[8].OneofWrappers = []any{
+		(*OceanMessage_Command)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_proto_rawDesc), len(file_services_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   5,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

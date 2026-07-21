@@ -19,255 +19,105 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TSControl_Start_FullMethodName      = "/tsgrpc.TSControl/Start"
-	TSControl_Stop_FullMethodName       = "/tsgrpc.TSControl/Stop"
-	TSControl_Restart_FullMethodName    = "/tsgrpc.TSControl/Restart"
-	TSControl_GetMetrics_FullMethodName = "/tsgrpc.TSControl/GetMetrics"
-	TSControl_Register_FullMethodName   = "/tsgrpc.TSControl/Register"
+	TSAttach_Attach_FullMethodName = "/tsgrpc.TSAttach/Attach"
 )
 
-// TSControlClient is the client API for TSControl service.
+// TSAttachClient is the client API for TSAttach service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type TSControlClient interface {
-	Start(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
-	Stop(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
-	Restart(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
-	GetMetrics(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
-	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*Response, error)
+//
+// TSAttach is the worker->ocean control plane. A worker dials an ocean and
+// keeps a single bidirectional stream open for its lifetime: it sends Register
+// (once), then Reports/Heartbeats; the ocean sends Commands (start/stop).
+type TSAttachClient interface {
+	Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[WorkerMessage, OceanMessage], error)
 }
 
-type tSControlClient struct {
+type tSAttachClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewTSControlClient(cc grpc.ClientConnInterface) TSControlClient {
-	return &tSControlClient{cc}
+func NewTSAttachClient(cc grpc.ClientConnInterface) TSAttachClient {
+	return &tSAttachClient{cc}
 }
 
-func (c *tSControlClient) Start(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error) {
+func (c *tSAttachClient) Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[WorkerMessage, OceanMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Response)
-	err := c.cc.Invoke(ctx, TSControl_Start_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &TSAttach_ServiceDesc.Streams[0], TSAttach_Attach_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[WorkerMessage, OceanMessage]{ClientStream: stream}
+	return x, nil
 }
 
-func (c *tSControlClient) Stop(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Response)
-	err := c.cc.Invoke(ctx, TSControl_Stop_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type TSAttach_AttachClient = grpc.BidiStreamingClient[WorkerMessage, OceanMessage]
 
-func (c *tSControlClient) Restart(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Response)
-	err := c.cc.Invoke(ctx, TSControl_Restart_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *tSControlClient) GetMetrics(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Response)
-	err := c.cc.Invoke(ctx, TSControl_GetMetrics_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *tSControlClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*Response, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Response)
-	err := c.cc.Invoke(ctx, TSControl_Register_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// TSControlServer is the server API for TSControl service.
-// All implementations must embed UnimplementedTSControlServer
+// TSAttachServer is the server API for TSAttach service.
+// All implementations must embed UnimplementedTSAttachServer
 // for forward compatibility.
-type TSControlServer interface {
-	Start(context.Context, *Request) (*Response, error)
-	Stop(context.Context, *Request) (*Response, error)
-	Restart(context.Context, *Request) (*Response, error)
-	GetMetrics(context.Context, *Request) (*Response, error)
-	Register(context.Context, *RegisterRequest) (*Response, error)
-	mustEmbedUnimplementedTSControlServer()
+//
+// TSAttach is the worker->ocean control plane. A worker dials an ocean and
+// keeps a single bidirectional stream open for its lifetime: it sends Register
+// (once), then Reports/Heartbeats; the ocean sends Commands (start/stop).
+type TSAttachServer interface {
+	Attach(grpc.BidiStreamingServer[WorkerMessage, OceanMessage]) error
+	mustEmbedUnimplementedTSAttachServer()
 }
 
-// UnimplementedTSControlServer must be embedded to have
+// UnimplementedTSAttachServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedTSControlServer struct{}
+type UnimplementedTSAttachServer struct{}
 
-func (UnimplementedTSControlServer) Start(context.Context, *Request) (*Response, error) {
-	return nil, status.Error(codes.Unimplemented, "method Start not implemented")
+func (UnimplementedTSAttachServer) Attach(grpc.BidiStreamingServer[WorkerMessage, OceanMessage]) error {
+	return status.Error(codes.Unimplemented, "method Attach not implemented")
 }
-func (UnimplementedTSControlServer) Stop(context.Context, *Request) (*Response, error) {
-	return nil, status.Error(codes.Unimplemented, "method Stop not implemented")
-}
-func (UnimplementedTSControlServer) Restart(context.Context, *Request) (*Response, error) {
-	return nil, status.Error(codes.Unimplemented, "method Restart not implemented")
-}
-func (UnimplementedTSControlServer) GetMetrics(context.Context, *Request) (*Response, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetMetrics not implemented")
-}
-func (UnimplementedTSControlServer) Register(context.Context, *RegisterRequest) (*Response, error) {
-	return nil, status.Error(codes.Unimplemented, "method Register not implemented")
-}
-func (UnimplementedTSControlServer) mustEmbedUnimplementedTSControlServer() {}
-func (UnimplementedTSControlServer) testEmbeddedByValue()                   {}
+func (UnimplementedTSAttachServer) mustEmbedUnimplementedTSAttachServer() {}
+func (UnimplementedTSAttachServer) testEmbeddedByValue()                  {}
 
-// UnsafeTSControlServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to TSControlServer will
+// UnsafeTSAttachServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to TSAttachServer will
 // result in compilation errors.
-type UnsafeTSControlServer interface {
-	mustEmbedUnimplementedTSControlServer()
+type UnsafeTSAttachServer interface {
+	mustEmbedUnimplementedTSAttachServer()
 }
 
-func RegisterTSControlServer(s grpc.ServiceRegistrar, srv TSControlServer) {
-	// If the following call panics, it indicates UnimplementedTSControlServer was
+func RegisterTSAttachServer(s grpc.ServiceRegistrar, srv TSAttachServer) {
+	// If the following call panics, it indicates UnimplementedTSAttachServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&TSControl_ServiceDesc, srv)
+	s.RegisterService(&TSAttach_ServiceDesc, srv)
 }
 
-func _TSControl_Start_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Request)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TSControlServer).Start(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: TSControl_Start_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TSControlServer).Start(ctx, req.(*Request))
-	}
-	return interceptor(ctx, in, info, handler)
+func _TSAttach_Attach_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(TSAttachServer).Attach(&grpc.GenericServerStream[WorkerMessage, OceanMessage]{ServerStream: stream})
 }
 
-func _TSControl_Stop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Request)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TSControlServer).Stop(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: TSControl_Stop_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TSControlServer).Stop(ctx, req.(*Request))
-	}
-	return interceptor(ctx, in, info, handler)
-}
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type TSAttach_AttachServer = grpc.BidiStreamingServer[WorkerMessage, OceanMessage]
 
-func _TSControl_Restart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Request)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TSControlServer).Restart(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: TSControl_Restart_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TSControlServer).Restart(ctx, req.(*Request))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _TSControl_GetMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Request)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TSControlServer).GetMetrics(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: TSControl_GetMetrics_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TSControlServer).GetMetrics(ctx, req.(*Request))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _TSControl_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TSControlServer).Register(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: TSControl_Register_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TSControlServer).Register(ctx, req.(*RegisterRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-// TSControl_ServiceDesc is the grpc.ServiceDesc for TSControl service.
+// TSAttach_ServiceDesc is the grpc.ServiceDesc for TSAttach service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var TSControl_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "tsgrpc.TSControl",
-	HandlerType: (*TSControlServer)(nil),
-	Methods: []grpc.MethodDesc{
+var TSAttach_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "tsgrpc.TSAttach",
+	HandlerType: (*TSAttachServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "Start",
-			Handler:    _TSControl_Start_Handler,
-		},
-		{
-			MethodName: "Stop",
-			Handler:    _TSControl_Stop_Handler,
-		},
-		{
-			MethodName: "Restart",
-			Handler:    _TSControl_Restart_Handler,
-		},
-		{
-			MethodName: "GetMetrics",
-			Handler:    _TSControl_GetMetrics_Handler,
-		},
-		{
-			MethodName: "Register",
-			Handler:    _TSControl_Register_Handler,
+			StreamName:    "Attach",
+			Handler:       _TSAttach_Attach_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "services.proto",
 }

@@ -1,0 +1,16 @@
+name: ocean-2
+id: ocean-2
+endpoints:
+  http: 0.0.0.0:8080
+  grpc: 0.0.0.0:8050
+advertise:
+  # ocean-2's attach port is published on 8060 (see docker-compose.droplet.yml)
+  grpc: CHANGE_ME_PUBLIC_HOST:8060
+max_connections: 2000
+registry:
+  endpoints:
+    - etcd:2379
+lease:
+  ttl: 10
+auth:
+  token: CHANGE_ME_SHARED_TOKEN
