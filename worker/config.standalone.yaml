@@ -1,0 +1,13 @@
+# Standalone worker config — no etcd, no master.
+# Drive it directly via the admin HTTP API (POST /api/v1/admin/start).
+name: worker-standalone
+id: standalone-1
+concurence: 300
+
+# standalone = do NOT register in etcd; run fully isolated
+mode: standalone
+
+endpoints:
+  # bind to 0.0.0.0 so the ports are reachable from outside the container
+  grpc: 0.0.0.0:8050   # unused in standalone (kept so the daemon starts cleanly)
+  http: 0.0.0.0:8090   # admin control API
