@@ -324,7 +324,6 @@
       <div class="grow">Viewing: <b id="viewingName">— none —</b></div>
       <select id="mname" onchange="onWatchChange()" style="display:none"></select>
       <button class="ghost" onclick="loadMetrics()">Fetch now</button>
-      <button class="ghost" onclick="generateReport()">Download report</button>
       <div class="spacer"></div>
       <label class="toggle"><input type="checkbox" id="autopoll" checked onchange="togglePoll()" /> auto-refresh (2s)</label>
       <label class="toggle"><input type="checkbox" id="tableview" onchange="toggleTable()" /> table view</label>
@@ -809,27 +808,38 @@ function repChart(pts, key, color, yFmt, floor){
   <circle cx="${xOf(last.t).toFixed(1)}" cy="${yOf(last[key]).toFixed(1)}" r="4" fill="${color}" stroke="#0a0f16" stroke-width="2"/></svg>`;
 }
 
-function generateReport(){
-  const name=($('mname').value||watchedName||'').trim();
-  if(!name){ toast('No test selected','Observe a running test first, then generate.','warn'); return; }
-  const pts=samples.slice();
-  if(pts.length<2){ toast('Not enough data','Let the test run a few seconds to collect samples.','warn'); return; }
+async function generateReport(name){
+  name=(name||$('mname').value||watchedName||'').trim();
+  if(!name){ toast('No test selected','Pick a running test, then generate.','warn'); return; }
 
-  const last=pts[pts.length-1];
-  const peakRps=Math.max(...pts.map(s=>s.rps));
-  const avgRps = last.t>0 ? last.req/last.t : 0;
-  const lats=pts.map(s=>s.avg).filter(v=>v>0);
-  const avgLat= lats.length ? lats.reduce((a,b)=>a+b,0)/lats.length : (last.avg||0);
-  const mins=pts.map(s=>s.min).filter(v=>v>0);
-  const minLat= mins.length ? Math.min(...mins) : 0;
-  const maxLat=Math.max(...pts.map(s=>s.max));
-  const requests=last.req, errors=last.err, workers=last.wrk, duration=last.t;
+  // KPIs come from THIS test's live metrics (correct regardless of which test is watched)
+  let d=null;
+  try{ const r=await call('/api/v1/metrics','metrics',{name}); d=r.data; }
+  catch(e){ setConn(false); toast('Report failed', e.message, 'error'); return; }
+  if(!d){ toast('No data', `No metrics available for “${name}”.`, 'warn'); return; }
+
+  // target from the cluster topology (per-test accurate)
+  let target='—';
+  try{
+    const ri=await call('/api/v1/info','info');
+    const g=JSON.parse((ri.data&&ri.data.topology)||'{}');
+    const e=(g.edges||[]).find(x=>x.kind==='load'&&x.job===name);
+    if(e){ const n=(g.nodes||[]).find(x=>x.id===e.to); if(n) target=n.name||n.endpoint||target; }
+  }catch(_){}
+
+  // time-series charts only when this test is the one being watched (that's the only buffer we keep)
+  const pts = (name===watchedName && samples.length>=2) ? samples.slice() : [];
+  const hasSeries = pts.length>=2;
+
+  const requests=+d.RequestCount||0, errors=+d.error_count||0, duration=+d.ElapedTime||0,
+        workers=+d.workerCount||0, maxLat=+d.max||0;
   const errRate = requests>0 ? errors/requests*100 : 0;
-
-  // best-effort config context from the load-test form
-  const target=($('url')&&$('url').value.trim())||'—';
-  const method=($('method')&&$('method').value)||'GET';
-  const concurrency=($('concurrence')&&$('concurrence').value)||'—';
+  const avgRps = duration>0 ? requests/duration : (+d.rps||0);
+  const peakRps = hasSeries ? Math.max(...pts.map(s=>s.rps)) : (+d.rps||avgRps);
+  const lats = hasSeries ? pts.map(s=>s.avg).filter(v=>v>0) : [];
+  const avgLat = lats.length ? lats.reduce((a,b)=>a+b,0)/lats.length : (+d.avg||0);
+  const mins = hasSeries ? pts.map(s=>s.min).filter(v=>v>0) : [];
+  const minLat = mins.length ? Math.min(...mins) : (+d.min||0);
 
   const verdict = errRate<1 ? {cls:'pass',label:'PASSED', note:'Error rate under 1% — the target held up under load.'}
                : errRate<5 ? {cls:'warn',label:'WARNING',note:'Error rate between 1% and 5% — the target showed strain.'}
@@ -917,6 +927,7 @@ function generateReport(){
   ${kpi('Duration', Math.round(duration),'s')}
  </div>
 
+${ hasSeries ? `
  <h2>Throughput over time</h2>
  <div class="card"><div class="ct"><span class="dot" style="background:#2ee6ff"></span>Requests / second</div>
   ${repChart(pts,'rps','#2ee6ff',fmtInt,1)}</div>
@@ -928,16 +939,19 @@ function generateReport(){
  <h2>Error rate over time</h2>
  <div class="card"><div class="ct"><span class="dot" style="background:#ff6b81"></span>Errors as % of requests</div>
   ${repChart(pts,'rate','#ff6b81',v=>(v>=10?String(Math.round(v)):v.toFixed(1))+'%',1)}</div>
+` : `
+ <h2>Timeline</h2>
+ <div class="card"><div class="rc-empty">This is a snapshot report — the KPIs above are live totals for “${esc(name)}”.<br>Click <b>Watch</b> on this test to record the throughput / latency / error timeline, then generate again.</div></div>
+` }
 
  <h2>Configuration</h2>
  <div class="card"><table>
   ${row('Test name', esc(name))}
   ${row('Target', esc(target))}
-  ${row('Method', esc(method))}
-  ${row('Requested concurrency', esc(concurrency))}
   ${row('Workers engaged', workers)}
   ${row('Total requests', compact(requests)+' ('+requests.toLocaleString()+')')}
   ${row('Total errors', errors.toLocaleString())}
+  ${row('Elapsed', Math.round(duration)+' s')}
  </table></div>
 
  <footer>
