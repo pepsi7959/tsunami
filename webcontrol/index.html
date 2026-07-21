@@ -4,6 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Tsunami — Web Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>document.documentElement.setAttribute('data-theme', new URLSearchParams(location.search).get('theme') || localStorage.getItem('tsu_theme') || 'dark');</script>
 <style>
   /* --- semantic, tokenized palette · light default, dark opt-in, whitelabel-ready --- */
   :root {
@@ -26,33 +30,47 @@
     --s-aqua:     var(--success);
     --s-crit:     var(--danger);
     --good:       var(--success);
-    --radius: 8px;
-    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --radius: 14px;
+    --grad: linear-gradient(135deg, #22d3ee 0%, #3b82f6 52%, #8b5cf6 100%);
+    --sans: "Sora", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
   [data-theme="dark"] {
     color-scheme: dark;
-    --plane:      #0b0f17;
-    --surface:    #111827;
-    --surface-2:  #1b2433;
-    --ink:        #f1f5f9;
-    --ink-2:      #cbd5e1;
-    --muted:      #94a3b8;               /* ≥AA on dark surfaces */
-    --grid:       #1e2836;
-    --axis:       #334155;
-    --border:     rgba(255,255,255,0.10);
-    --primary:    #3b82f6;
-    --success:    #22c55e;
-    --warn:       #f59e0b;
-    --danger:     #ef4444;
+    --plane:      #0a0e17;               /* cool navy-black */
+    --surface:    #111726;
+    --surface-2:  #1a2233;
+    --ink:        #f5f8ff;
+    --ink-2:      #aeb9cf;
+    --muted:      #8593ad;               /* ≥AA on navy */
+    --grid:       #1a2233;
+    --axis:       #2a3448;
+    --border:     rgba(255,255,255,0.08);
+    --primary:    #4da3ff;               /* cyan-blue (text/links/borders) */
+    --success:    #00e39a;               /* mint */
+    --warn:       #f5b301;
+    --danger:     #ff5470;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: var(--sans); background: var(--plane); color: var(--ink); }
+  /* soft top glow (crypto-wallet vibe), dark theme only */
+  [data-theme="dark"] body {
+    background:
+      radial-gradient(1100px 560px at 50% -8%, rgba(59,130,246,.12), transparent 62%),
+      radial-gradient(900px 500px at 88% 4%, rgba(139,92,246,.08), transparent 60%),
+      var(--plane);
+    background-attachment: fixed;
+  }
+  [data-theme="dark"] .card, [data-theme="dark"] .tile {
+    box-shadow: 0 1px 0 rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35);
+  }
   header {
     padding: 16px 24px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 14px; background: var(--surface);
   }
-  header .brandmark { display:inline-flex; color: var(--primary); }
-  header .brandmark svg { width:24px; height:24px; }
+  header .brandmark { display:inline-flex; align-items:center; justify-content:center;
+    width:36px; height:36px; border-radius:11px; background:var(--grad); color:#fff;
+    box-shadow: 0 6px 16px rgba(59,130,246,.35); }
+  header .brandmark svg { width:20px; height:20px; }
   header h1 { font-size: 17px; margin: 0; letter-spacing: .4px; font-weight: 650; }
   .iconbtn { background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2);
     width:32px; height:32px; border-radius:8px; padding:0; margin:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
@@ -122,8 +140,8 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
-  .chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; padding:3px 7px;
-    border-radius:6px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2); cursor:pointer; }
+  .chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; padding:4px 10px;
+    border-radius:999px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2); cursor:pointer; }
   .chip:hover { color:var(--ink); border-color: rgba(57,135,229,.55); }
   .hint { font-size:11px; color:var(--muted); margin-top:7px; }
   .hint code { background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--ink-2); }
@@ -141,7 +159,8 @@
     cursor: pointer; border: none; border-radius: 8px; padding: 10px 15px;
     font-size: 14px; font-weight: 600; color: #fff; margin-top: 14px;
   }
-  button.start { background: var(--primary); } button.stop { background: var(--danger); }
+  button.start { background: var(--grad); box-shadow: 0 6px 18px rgba(59,130,246,.28); }
+  button.stop { background: var(--danger); }
   button.ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2); }
   button:hover { filter: brightness(1.1); }  button:disabled { opacity:.45; cursor:not-allowed; }
   .info-grid { display:grid; grid-template-columns: 1fr auto; gap: 7px 16px; font-size: 13px; }
@@ -161,6 +180,8 @@
   .tile .v { font-size: 30px; font-weight: 680; margin-top: 4px; line-height: 1.1; }
   .tile .u { font-size: 14px; color: var(--muted); font-weight: 500; margin-left: 4px; }
   .tile.hero .v { font-size: 46px; }
+  [data-theme="dark"] .tile.hero { border-color: transparent;
+    box-shadow: 0 0 0 1px rgba(77,163,255,.35), 0 10px 34px rgba(59,130,246,.20); }
   .tile.hero { border-color: rgba(57,135,229,.4); }
   .tile.small .v { font-size: 22px; }
   .tile .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
@@ -1100,7 +1121,7 @@ function toggleTheme(){ applyTheme(document.documentElement.getAttribute('data-t
 function updateMetricsVisibility(){ const on=!!$('mname').value; $('metricsZone').classList.toggle('hidden', !on); $('emptyState').classList.toggle('hidden', on); }
 
 /* ---------- boot ---------- */
-applyTheme(new URLSearchParams(location.search).get('theme') || localStorage.getItem('tsu_theme') || 'light');
+applyTheme(new URLSearchParams(location.search).get('theme') || localStorage.getItem('tsu_theme') || 'dark');
 updateMetricsVisibility();
 (function initConns(){
   const cur=master();
