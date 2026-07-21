@@ -20,7 +20,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goarch: [amd64, arm64]
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -33,34 +41,36 @@ jobs:
         id: ver
         run: echo "version=${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}" >> "$GITHUB_OUTPUT"
 
-      - name: Build (linux/${{ matrix.goarch }})
+      - name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
         env:
           VERSION: ${{ steps.ver.outputs.version }}
+          GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" \
+          CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
             go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o dist/tsunami ./worker
-          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" \
+          CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
             go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o dist/ocean ./master
 
       - name: Package
         env:
           VERSION: ${{ steps.ver.outputs.version }}
+          GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
           set -euo pipefail
-          archive="tsunami_${VERSION}_linux_${GOARCH}.tar.gz"
+          archive="tsunami_${VERSION}_${GOOS}_${GOARCH}.tar.gz"
           tar -C dist -czf "$archive" tsunami ocean
           sha256sum "$archive" > "${archive}.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tsunami_linux_${{ matrix.goarch }}
+          name: tsunami_${{ matrix.goos }}_${{ matrix.goarch }}
           path: |
-            tsunami_*_linux_${{ matrix.goarch }}.tar.gz
-            tsunami_*_linux_${{ matrix.goarch }}.tar.gz.sha256
+            tsunami_*_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+            tsunami_*_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz.sha256
 
   release:
     needs: build
@@ -87,5 +97,5 @@ jobs:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            artifacts/tsunami_*_linux_*.tar.gz
+            artifacts/tsunami_*.tar.gz
             artifacts/SHA256SUMS

@@ -1,0 +1,83 @@
+# Active-active multi-master stack: etcd + 2 oceans + 2 workers + webcontrol.
+# Usage: docker compose -f docker-compose.multi.yml up --build -d
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.16
+    environment:
+      ETCDCTL_API: "3"
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd0
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd0=http://etcd:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=tsunami-etcd
+    ports:
+      - "2379:2379"
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  worker1:
+    build: { context: ., target: tsunami }
+    volumes:
+      - ./deploy/tsunami1.yaml:/etc/tsunami/config.yaml:ro
+    ports:
+      - "8090:8090"
+      - "8091:8091"
+    depends_on:
+      etcd: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8090 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  worker2:
+    build: { context: ., target: tsunami }
+    volumes:
+      - ./deploy/tsunami2.yaml:/etc/tsunami/config.yaml:ro
+    ports:
+      - "8092:8090"
+      - "8093:8091"
+    depends_on:
+      etcd: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8090 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # masters watch the registry live, so they need not wait for workers
+  ocean1:
+    build: { context: ., target: ocean }
+    volumes:
+      - ./deploy/ocean1.yaml:/etc/tsunami/config.yaml:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      etcd: { condition: service_healthy }
+
+  ocean2:
+    build: { context: ., target: ocean }
+    volumes:
+      - ./deploy/ocean2.yaml:/etc/tsunami/config.yaml:ro
+    ports:
+      - "8081:8080"
+    depends_on:
+      etcd: { condition: service_healthy }
+
+  webcontrol:
+    image: nginx:1.27-alpine
+    ports:
+      - "8082:80"
+    volumes:
+      - ./webcontrol:/usr/share/nginx/html:ro
+    depends_on:
+      - ocean1

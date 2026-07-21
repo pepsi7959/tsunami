@@ -8,8 +8,10 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -29,6 +31,9 @@ const APIAdmin = "/api/v1/admin"
 
 // AllowOrigin is a header to allow cross domain
 var AllowOrigin = "*"
+
+// version is set at build time via -ldflags "-X main.version=<tag>"
+var version = "dev"
 
 const (
 	modeStandAlone = "standalone"
@@ -360,8 +365,11 @@ func readConf() *viper.Viper {
 	viper.SetDefault("registry.request_timeout", 2)
 	viper.SetDefault("registry.dial_timeout", 2)
 
-	//Key range of client
-	viper.SetDefault("registry.client_config_key", "tsunami_config_client_")
+	//Key prefix under which workers register themselves
+	viper.SetDefault("registry.worker_prefix", "/tsunami/workers/")
+
+	//Lease TTL (seconds) for registry keys (auto-expire dead workers/masters)
+	viper.SetDefault("lease.ttl", 10)
 
 	err := viper.ReadInConfig() // Find and read the config file
 	if err != nil {             // Handle errors reading the config file
@@ -390,6 +398,13 @@ func New(viper *viper.Viper) *TSControl {
 
 func main() {
 
+	for _, a := range os.Args[1:] {
+		if a == "--version" || a == "-v" {
+			fmt.Println("tsunami", version)
+			return
+		}
+	}
+
 	config := readConf()
 	ctrl := New(config)
 
@@ -402,26 +417,53 @@ func main() {
 
 	if ctrl.mode == modeCluster {
 
-		etcdClient := tsetcd.EtcdClient{
-			Conf: clientv3.Config{
-				Endpoints:   ctrl.viper.GetStringSlice("registry.endpoints"),
-				DialTimeout: time.Second * time.Duration(ctrl.viper.GetInt("registry.dial_timeout")),
-			},
-			RequestTimeOut: time.Second * time.Duration(ctrl.viper.GetInt("registry.request_timeout")),
-			Done:           false,
+		ttl := int64(ctrl.viper.GetInt("lease.ttl"))
+		if ttl <= 0 {
+			ttl = 10
+		}
+
+		etcdClient, err := tsetcd.NewClient(
+			ctrl.viper.GetStringSlice("registry.endpoints"),
+			time.Second*time.Duration(ctrl.viper.GetInt("registry.dial_timeout")),
+			time.Second*time.Duration(ctrl.viper.GetInt("registry.request_timeout")),
+			int(ttl),
+		)
+		if err != nil {
+			log.Fatalf("registry: connect failed: %v", err)
 		}
 
 		value, err := json.Marshal(ctrl.workerConf)
-
 		if err != nil {
-			log.Fatalf(err.Error())
+			log.Fatalf("registry: marshal worker conf: %v", err)
 		}
 
-		err = etcdClient.Put(ctrl.viper.GetString("registry.client_config_key")+ctrl.viper.GetString("id"), string(value))
-
+		// Register under a lease so the entry auto-expires if this worker dies.
+		// The gRPC server is already listening (started above) so masters that
+		// discover this key can immediately dial the endpoint.
+		lease, err := etcdClient.Grant(ttl)
 		if err != nil {
-			log.Fatalf(err.Error())
+			log.Fatalf("registry: grant lease: %v", err)
 		}
+		key := ctrl.viper.GetString("registry.worker_prefix") + ctrl.viper.GetString("id")
+		if err := etcdClient.Put(key, string(value), clientv3.WithLease(lease)); err != nil {
+			log.Fatalf("registry: register worker: %v", err)
+		}
+		if err := etcdClient.KeepAlive(lease); err != nil {
+			log.Fatalf("registry: keepalive: %v", err)
+		}
+		log.Printf("registry: registered %s (lease %x, ttl %ds)", key, lease, ttl)
+
+		// Deregister on shutdown (belt-and-suspenders on top of lease expiry).
+		go func() {
+			sig := make(chan os.Signal, 1)
+			signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+			<-sig
+			log.Println("registry: deregistering worker")
+			etcdClient.Delete(key)
+			etcdClient.Revoke(lease)
+			etcdClient.Close()
+			os.Exit(0)
+		}()
 
 	}
 	// Start deamon service

@@ -623,13 +623,12 @@ function renderTopo(g){
   if(sig===topoSig) return;   // no structural change — let the animation keep running
   topoSig=sig;
 
-  const ocean=nodes.find(n=>n.kind==='master');
+  const masters=nodes.filter(n=>n.kind==='master');
   const workers=nodes.filter(n=>n.kind==='worker');
   const targets=nodes.filter(n=>n.kind==='target');
   const pos={}, colX={master:130, worker:TW/2, target:TW-160};
   const place=(arr,x)=>{ const n=arr.length; arr.forEach((nd,i)=>{ pos[nd.id]={x,y:n<=1?TH/2:(TH*0.2+TH*0.6*(i/(n-1)))}; }); };
-  if(ocean) pos[ocean.id]={x:colX.master,y:TH/2};
-  place(workers,colX.worker); place(targets,colX.target);
+  place(masters,colX.master); place(workers,colX.worker); place(targets,colX.target);
 
   const NS='http://www.w3.org/2000/svg';
   const el=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;};

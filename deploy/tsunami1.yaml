@@ -1,0 +1,16 @@
+name: worker-1
+id: 11111111-1111-1111-1111-111111111111
+concurence: 300
+mode: cluster
+endpoints:
+  grpc: worker1:8050
+  http: 0.0.0.0:8090
+
+registry:
+  request_timeout: 2
+  dial_timeout: 2
+  endpoints:
+    - etcd:2379
+
+lease:
+  ttl: 10
