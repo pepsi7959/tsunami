@@ -36,6 +36,9 @@ type Worker struct {
 	urlTmpl     *Template
 	bodyTmpl    *Template
 	headerTmpls map[string]*Template
+
+	// sample recorder, shared across a service's workers; nil unless verbose
+	sample *sampleRec
 }
 
 func (w *Worker) url() string {
@@ -147,13 +150,17 @@ func (w *Worker) do() {
 		fmt.Println("error client do: " + err.Error())
 	} else {
 		code := resp.StatusCode()
-		if code != 200 {
+		if code < 200 || code >= 300 {
 			w.UpdateErr()
 			fmt.Println("code: ", code, "Error: ", string(resp.Body()))
 		}
 	}
 
-	w.UpdateStat(time.Since(start).Nanoseconds())
+	elapsed := time.Since(start).Nanoseconds()
+	if w.sample != nil {
+		w.sample.capture(req, resp, float64(elapsed)/1e6, err)
+	}
+	w.UpdateStat(elapsed)
 
 	fasthttp.ReleaseRequest(req)
 	fasthttp.ReleaseResponse(resp)

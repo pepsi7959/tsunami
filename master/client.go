@@ -50,6 +50,7 @@ func (s *attachServer) Attach(stream grpc.BidiStreamingServer[tsgrpc.WorkerMessa
 		maxCap:  int(reg.GetMaxConcurrency()),
 		send:    make(chan *tsgrpc.OceanMessage, 32),
 		metrics: make(map[string]*tsgrpc.Metric),
+		samples: make(map[string]*tsgrpc.Sample),
 	}
 
 	if !s.oc.addWorker(w) {
@@ -80,6 +81,9 @@ func (s *attachServer) Attach(stream grpc.BidiStreamingServer[tsgrpc.WorkerMessa
 		}
 		if r := msg.GetReport(); r != nil && r.GetMetric() != nil {
 			s.oc.onReport(w.id, r.GetMetric())
+			if smp := r.GetSample(); smp != nil {
+				s.oc.onSample(w.id, r.GetMetric().GetJob(), smp)
+			}
 		}
 	}
 }
@@ -120,6 +124,15 @@ func (oc *Ocean) onReport(id string, m *tsgrpc.Metric) {
 	defer oc.mu.Unlock()
 	if w := oc.workers[id]; w != nil {
 		w.metrics[m.GetJob()] = m
+	}
+}
+
+// onSample stores the latest per-job request/response from a verbose worker.
+func (oc *Ocean) onSample(id, job string, smp *tsgrpc.Sample) {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+	if w := oc.workers[id]; w != nil {
+		w.samples[job] = smp
 	}
 }
 

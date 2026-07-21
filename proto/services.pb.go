@@ -188,6 +188,7 @@ type Params struct {
 	Concurrency   int32                  `protobuf:"varint,8,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
 	Header        []*HTTPHeader          `protobuf:"bytes,9,rep,name=header,proto3" json:"header,omitempty"`
 	Body          string                 `protobuf:"bytes,10,opt,name=body,proto3" json:"body,omitempty"`
+	Verbose       bool                   `protobuf:"varint,11,opt,name=verbose,proto3" json:"verbose,omitempty"` // when true the worker records the last request/response
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -290,6 +291,13 @@ func (x *Params) GetBody() string {
 		return x.Body
 	}
 	return ""
+}
+
+func (x *Params) GetVerbose() bool {
+	if x != nil {
+		return x.Verbose
+	}
+	return false
 }
 
 // ---------- worker -> ocean ----------
@@ -461,16 +469,134 @@ func (x *Metric) GetElapsedTime() float64 {
 	return 0
 }
 
+// Sample is the last request/response a worker captured for a verbose job.
+type Sample struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Method         string                 `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
+	Url            string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	RequestHeader  []*HTTPHeader          `protobuf:"bytes,3,rep,name=request_header,json=requestHeader,proto3" json:"request_header,omitempty"`
+	RequestBody    string                 `protobuf:"bytes,4,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
+	StatusCode     int32                  `protobuf:"varint,5,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	ResponseHeader []*HTTPHeader          `protobuf:"bytes,6,rep,name=response_header,json=responseHeader,proto3" json:"response_header,omitempty"`
+	ResponseBody   string                 `protobuf:"bytes,7,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+	LatencyMs      float64                `protobuf:"fixed64,8,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	Error          string                 `protobuf:"bytes,9,opt,name=error,proto3" json:"error,omitempty"` // set instead of a response when the request itself failed
+	Ts             int64                  `protobuf:"varint,10,opt,name=ts,proto3" json:"ts,omitempty"`     // capture time, unix milliseconds
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Sample) Reset() {
+	*x = Sample{}
+	mi := &file_services_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Sample) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Sample) ProtoMessage() {}
+
+func (x *Sample) ProtoReflect() protoreflect.Message {
+	mi := &file_services_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Sample.ProtoReflect.Descriptor instead.
+func (*Sample) Descriptor() ([]byte, []int) {
+	return file_services_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Sample) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *Sample) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *Sample) GetRequestHeader() []*HTTPHeader {
+	if x != nil {
+		return x.RequestHeader
+	}
+	return nil
+}
+
+func (x *Sample) GetRequestBody() string {
+	if x != nil {
+		return x.RequestBody
+	}
+	return ""
+}
+
+func (x *Sample) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *Sample) GetResponseHeader() []*HTTPHeader {
+	if x != nil {
+		return x.ResponseHeader
+	}
+	return nil
+}
+
+func (x *Sample) GetResponseBody() string {
+	if x != nil {
+		return x.ResponseBody
+	}
+	return ""
+}
+
+func (x *Sample) GetLatencyMs() float64 {
+	if x != nil {
+		return x.LatencyMs
+	}
+	return 0
+}
+
+func (x *Sample) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *Sample) GetTs() int64 {
+	if x != nil {
+		return x.Ts
+	}
+	return 0
+}
+
 type Report struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Metric        *Metric                `protobuf:"bytes,1,opt,name=metric,proto3" json:"metric,omitempty"`
+	Sample        *Sample                `protobuf:"bytes,2,opt,name=sample,proto3" json:"sample,omitempty"` // set only for verbose jobs
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Report) Reset() {
 	*x = Report{}
-	mi := &file_services_proto_msgTypes[4]
+	mi := &file_services_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -482,7 +608,7 @@ func (x *Report) String() string {
 func (*Report) ProtoMessage() {}
 
 func (x *Report) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[4]
+	mi := &file_services_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -495,12 +621,19 @@ func (x *Report) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Report.ProtoReflect.Descriptor instead.
 func (*Report) Descriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{4}
+	return file_services_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Report) GetMetric() *Metric {
 	if x != nil {
 		return x.Metric
+	}
+	return nil
+}
+
+func (x *Report) GetSample() *Sample {
+	if x != nil {
+		return x.Sample
 	}
 	return nil
 }
@@ -514,7 +647,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_services_proto_msgTypes[5]
+	mi := &file_services_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -526,7 +659,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[5]
+	mi := &file_services_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -539,7 +672,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{5}
+	return file_services_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Heartbeat) GetTs() int64 {
@@ -563,7 +696,7 @@ type WorkerMessage struct {
 
 func (x *WorkerMessage) Reset() {
 	*x = WorkerMessage{}
-	mi := &file_services_proto_msgTypes[6]
+	mi := &file_services_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -575,7 +708,7 @@ func (x *WorkerMessage) String() string {
 func (*WorkerMessage) ProtoMessage() {}
 
 func (x *WorkerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[6]
+	mi := &file_services_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -588,7 +721,7 @@ func (x *WorkerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerMessage.ProtoReflect.Descriptor instead.
 func (*WorkerMessage) Descriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{6}
+	return file_services_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *WorkerMessage) GetMsg() isWorkerMessage_Msg {
@@ -658,7 +791,7 @@ type Command struct {
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_services_proto_msgTypes[7]
+	mi := &file_services_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -670,7 +803,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[7]
+	mi := &file_services_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -683,7 +816,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{7}
+	return file_services_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Command) GetAction() Action {
@@ -719,7 +852,7 @@ type OceanMessage struct {
 
 func (x *OceanMessage) Reset() {
 	*x = OceanMessage{}
-	mi := &file_services_proto_msgTypes[8]
+	mi := &file_services_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -731,7 +864,7 @@ func (x *OceanMessage) String() string {
 func (*OceanMessage) ProtoMessage() {}
 
 func (x *OceanMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_services_proto_msgTypes[8]
+	mi := &file_services_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -744,7 +877,7 @@ func (x *OceanMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OceanMessage.ProtoReflect.Descriptor instead.
 func (*OceanMessage) Descriptor() ([]byte, []int) {
-	return file_services_proto_rawDescGZIP(), []int{8}
+	return file_services_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *OceanMessage) GetMsg() isOceanMessage_Msg {
@@ -781,7 +914,7 @@ const file_services_proto_rawDesc = "" +
 	"\n" +
 	"HTTPHeader\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\x94\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\xae\x02\n" +
 	"\x06Params\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12*\n" +
@@ -793,7 +926,8 @@ const file_services_proto_rawDesc = "" +
 	"\vconcurrency\x18\b \x01(\x05R\vconcurrency\x12*\n" +
 	"\x06header\x18\t \x03(\v2\x12.tsgrpc.HTTPHeaderR\x06header\x12\x12\n" +
 	"\x04body\x18\n" +
-	" \x01(\tR\x04body\"d\n" +
+	" \x01(\tR\x04body\x12\x18\n" +
+	"\averbose\x18\v \x01(\bR\averbose\"d\n" +
 	"\bRegister\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12'\n" +
@@ -808,9 +942,24 @@ const file_services_proto_rawDesc = "" +
 	"\x03min\x18\x06 \x01(\x01R\x03min\x12\x10\n" +
 	"\x03max\x18\a \x01(\x01R\x03max\x12\x10\n" +
 	"\x03rps\x18\b \x01(\x01R\x03rps\x12!\n" +
-	"\felapsed_time\x18\t \x01(\x01R\velapsedTime\"0\n" +
+	"\felapsed_time\x18\t \x01(\x01R\velapsedTime\"\xd8\x02\n" +
+	"\x06Sample\x12\x16\n" +
+	"\x06method\x18\x01 \x01(\tR\x06method\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x129\n" +
+	"\x0erequest_header\x18\x03 \x03(\v2\x12.tsgrpc.HTTPHeaderR\rrequestHeader\x12!\n" +
+	"\frequest_body\x18\x04 \x01(\tR\vrequestBody\x12\x1f\n" +
+	"\vstatus_code\x18\x05 \x01(\x05R\n" +
+	"statusCode\x12;\n" +
+	"\x0fresponse_header\x18\x06 \x03(\v2\x12.tsgrpc.HTTPHeaderR\x0eresponseHeader\x12#\n" +
+	"\rresponse_body\x18\a \x01(\tR\fresponseBody\x12\x1d\n" +
+	"\n" +
+	"latency_ms\x18\b \x01(\x01R\tlatencyMs\x12\x14\n" +
+	"\x05error\x18\t \x01(\tR\x05error\x12\x0e\n" +
+	"\x02ts\x18\n" +
+	" \x01(\x03R\x02ts\"X\n" +
 	"\x06Report\x12&\n" +
-	"\x06metric\x18\x01 \x01(\v2\x0e.tsgrpc.MetricR\x06metric\"\x1b\n" +
+	"\x06metric\x18\x01 \x01(\v2\x0e.tsgrpc.MetricR\x06metric\x12&\n" +
+	"\x06sample\x18\x02 \x01(\v2\x0e.tsgrpc.SampleR\x06sample\"\x1b\n" +
 	"\tHeartbeat\x12\x0e\n" +
 	"\x02ts\x18\x01 \x01(\x03R\x02ts\"\xa3\x01\n" +
 	"\rWorkerMessage\x12.\n" +
@@ -853,7 +1002,7 @@ func file_services_proto_rawDescGZIP() []byte {
 }
 
 var file_services_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_services_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_services_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_services_proto_goTypes = []any{
 	(HTTPMethod)(0),       // 0: tsgrpc.HTTPMethod
 	(Action)(0),           // 1: tsgrpc.Action
@@ -861,29 +1010,33 @@ var file_services_proto_goTypes = []any{
 	(*Params)(nil),        // 3: tsgrpc.Params
 	(*Register)(nil),      // 4: tsgrpc.Register
 	(*Metric)(nil),        // 5: tsgrpc.Metric
-	(*Report)(nil),        // 6: tsgrpc.Report
-	(*Heartbeat)(nil),     // 7: tsgrpc.Heartbeat
-	(*WorkerMessage)(nil), // 8: tsgrpc.WorkerMessage
-	(*Command)(nil),       // 9: tsgrpc.Command
-	(*OceanMessage)(nil),  // 10: tsgrpc.OceanMessage
+	(*Sample)(nil),        // 6: tsgrpc.Sample
+	(*Report)(nil),        // 7: tsgrpc.Report
+	(*Heartbeat)(nil),     // 8: tsgrpc.Heartbeat
+	(*WorkerMessage)(nil), // 9: tsgrpc.WorkerMessage
+	(*Command)(nil),       // 10: tsgrpc.Command
+	(*OceanMessage)(nil),  // 11: tsgrpc.OceanMessage
 }
 var file_services_proto_depIdxs = []int32{
 	0,  // 0: tsgrpc.Params.method:type_name -> tsgrpc.HTTPMethod
 	2,  // 1: tsgrpc.Params.header:type_name -> tsgrpc.HTTPHeader
-	5,  // 2: tsgrpc.Report.metric:type_name -> tsgrpc.Metric
-	4,  // 3: tsgrpc.WorkerMessage.register:type_name -> tsgrpc.Register
-	6,  // 4: tsgrpc.WorkerMessage.report:type_name -> tsgrpc.Report
-	7,  // 5: tsgrpc.WorkerMessage.heartbeat:type_name -> tsgrpc.Heartbeat
-	1,  // 6: tsgrpc.Command.action:type_name -> tsgrpc.Action
-	3,  // 7: tsgrpc.Command.params:type_name -> tsgrpc.Params
-	9,  // 8: tsgrpc.OceanMessage.command:type_name -> tsgrpc.Command
-	8,  // 9: tsgrpc.TSAttach.Attach:input_type -> tsgrpc.WorkerMessage
-	10, // 10: tsgrpc.TSAttach.Attach:output_type -> tsgrpc.OceanMessage
-	10, // [10:11] is the sub-list for method output_type
-	9,  // [9:10] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	2,  // 2: tsgrpc.Sample.request_header:type_name -> tsgrpc.HTTPHeader
+	2,  // 3: tsgrpc.Sample.response_header:type_name -> tsgrpc.HTTPHeader
+	5,  // 4: tsgrpc.Report.metric:type_name -> tsgrpc.Metric
+	6,  // 5: tsgrpc.Report.sample:type_name -> tsgrpc.Sample
+	4,  // 6: tsgrpc.WorkerMessage.register:type_name -> tsgrpc.Register
+	7,  // 7: tsgrpc.WorkerMessage.report:type_name -> tsgrpc.Report
+	8,  // 8: tsgrpc.WorkerMessage.heartbeat:type_name -> tsgrpc.Heartbeat
+	1,  // 9: tsgrpc.Command.action:type_name -> tsgrpc.Action
+	3,  // 10: tsgrpc.Command.params:type_name -> tsgrpc.Params
+	10, // 11: tsgrpc.OceanMessage.command:type_name -> tsgrpc.Command
+	9,  // 12: tsgrpc.TSAttach.Attach:input_type -> tsgrpc.WorkerMessage
+	11, // 13: tsgrpc.TSAttach.Attach:output_type -> tsgrpc.OceanMessage
+	13, // [13:14] is the sub-list for method output_type
+	12, // [12:13] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_services_proto_init() }
@@ -891,12 +1044,12 @@ func file_services_proto_init() {
 	if File_services_proto != nil {
 		return
 	}
-	file_services_proto_msgTypes[6].OneofWrappers = []any{
+	file_services_proto_msgTypes[7].OneofWrappers = []any{
 		(*WorkerMessage_Register)(nil),
 		(*WorkerMessage_Report)(nil),
 		(*WorkerMessage_Heartbeat)(nil),
 	}
-	file_services_proto_msgTypes[8].OneofWrappers = []any{
+	file_services_proto_msgTypes[9].OneofWrappers = []any{
 		(*OceanMessage_Command)(nil),
 	}
 	type x struct{}
@@ -905,7 +1058,7 @@ func file_services_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_proto_rawDesc), len(file_services_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

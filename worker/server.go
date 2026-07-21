@@ -114,13 +114,17 @@ func (c *OceanClient) reportLoop(stream grpc.BidiStreamingClient[tsgrpc.WorkerMe
 			return
 		case <-t.C:
 			c.mu.Lock()
-			metrics := make([]*tsgrpc.Metric, 0, len(c.ctrl.services))
+			reports := make([]*tsgrpc.Report, 0, len(c.ctrl.services))
 			for _, ts := range c.ctrl.services {
-				metrics = append(metrics, serviceMetric(ts))
+				rep := &tsgrpc.Report{Metric: serviceMetric(ts)}
+				if ts.verbose && ts.sample != nil {
+					rep.Sample = ts.sample.get() // last request/response for this job
+				}
+				reports = append(reports, rep)
 			}
 			c.mu.Unlock()
-			for _, m := range metrics {
-				if stream.Send(&tsgrpc.WorkerMessage{Msg: &tsgrpc.WorkerMessage_Report{Report: &tsgrpc.Report{Metric: m}}}) != nil {
+			for _, rep := range reports {
+				if stream.Send(&tsgrpc.WorkerMessage{Msg: &tsgrpc.WorkerMessage_Report{Report: rep}}) != nil {
 					return
 				}
 			}
@@ -147,22 +151,22 @@ func (c *OceanClient) handleCommand(cmd *tsgrpc.Command) {
 			Body:        p.GetBody(),
 			Concurrence: int(p.GetConcurrency()),
 		}
-		c.startService(name, conf)
+		c.startService(name, conf, p.GetVerbose())
 	case tsgrpc.Action_STOP:
 		c.stopService(name)
 	}
 }
 
 // startService launches a load test (reuses the existing Tsunami engine).
-func (c *OceanClient) startService(name string, conf tshttp.Conf) {
+func (c *OceanClient) startService(name string, conf tshttp.Conf, verbose bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if existing := c.ctrl.services[name]; existing != nil {
 		existing.Stop()
 		delete(c.ctrl.services, name)
 	}
-	log.Printf("start: %s -> %s (%d concurrency)", name, conf.URL, conf.Concurrence)
-	app := &Tsunami{done: false, conf: conf, duration: 3600, refresh: 2, enableReport: false}
+	log.Printf("start: %s -> %s (%d concurrency, verbose=%v)", name, conf.URL, conf.Concurrence, verbose)
+	app := &Tsunami{done: false, conf: conf, duration: 3600, refresh: 2, enableReport: false, verbose: verbose}
 	app.Init(100000)
 	c.ctrl.services[name] = app
 	app.Run()

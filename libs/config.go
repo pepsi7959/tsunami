@@ -14,4 +14,5 @@ type Conf struct {
 	Concurrence int
 	MaxConns    int
 	MaxQueues   int
+	Verbose     bool
 }

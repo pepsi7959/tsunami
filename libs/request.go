@@ -15,6 +15,7 @@ type CmdConf struct {
 	Port        string            `json:"port"`
 	Path        string            `json:"path"`
 	Protocol    string            `json:"protocol"`
+	Verbose     bool              `json:"verbose"`
 }
 
 // Request sturcture

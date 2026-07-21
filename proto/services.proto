@@ -36,6 +36,7 @@ message Params {
   int32 concurrency = 8;
   repeated HTTPHeader header = 9;
   string body = 10;
+  bool verbose = 11; // when true the worker records the last request/response
 }
 
 // ---------- worker -> ocean ----------
@@ -57,8 +58,23 @@ message Metric {
   double elapsed_time = 9;
 }
 
+// Sample is the last request/response a worker captured for a verbose job.
+message Sample {
+  string method = 1;
+  string url = 2;
+  repeated HTTPHeader request_header = 3;
+  string request_body = 4;
+  int32 status_code = 5;
+  repeated HTTPHeader response_header = 6;
+  string response_body = 7;
+  double latency_ms = 8;
+  string error = 9; // set instead of a response when the request itself failed
+  int64 ts = 10;    // capture time, unix milliseconds
+}
+
 message Report {
   Metric metric = 1;
+  Sample sample = 2; // set only for verbose jobs
 }
 
 message Heartbeat {

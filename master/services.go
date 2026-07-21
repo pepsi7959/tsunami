@@ -57,6 +57,7 @@ func confFromReq(c tshttp.CmdConf) tshttp.Conf {
 		Headers:     c.Headers,
 		Body:        c.Body,
 		Concurrence: c.Concurrence,
+		Verbose:     c.Verbose,
 	}
 }
 
@@ -74,6 +75,7 @@ func startCommand(name string, conf tshttp.Conf, take int) *tsgrpc.OceanMessage 
 			Path:        conf.Path,
 			Concurrency: int32(take),
 			Body:        conf.Body,
+			Verbose:     conf.Verbose,
 		},
 	}}}
 }
@@ -306,6 +308,72 @@ func metricxToSlice(m *tshttp.Metric) *map[string]string {
 		"rps":          fmt.Sprintf("%f", m.Rps),
 	}
 	return &data
+}
+
+// SampleView is a JSON-friendly last request/response captured by a worker.
+type SampleView struct {
+	Worker          string            `json:"worker"`
+	WorkerID        string            `json:"workerID"`
+	Method          string            `json:"method"`
+	URL             string            `json:"url"`
+	RequestHeaders  map[string]string `json:"requestHeaders"`
+	RequestBody     string            `json:"requestBody"`
+	Status          int               `json:"status"`
+	ResponseHeaders map[string]string `json:"responseHeaders"`
+	ResponseBody    string            `json:"responseBody"`
+	LatencyMs       float64           `json:"latencyMs"`
+	Error           string            `json:"error"`
+	TS              int64             `json:"ts"`
+}
+
+func headerMap(hs []*tsgrpc.HTTPHeader) map[string]string {
+	m := make(map[string]string, len(hs))
+	for _, h := range hs {
+		m[h.GetKey()] = h.GetValue()
+	}
+	return m
+}
+
+// GetSample returns the latest request/response each worker captured for a
+// verbose job (verbose must have been enabled when the test was started).
+func (oc *Ocean) GetSample(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	job := req.Conf.Name
+
+	views := make([]SampleView, 0)
+	oc.mu.Lock()
+	for _, wk := range oc.workers {
+		s := wk.samples[job]
+		if s == nil {
+			continue
+		}
+		views = append(views, SampleView{
+			Worker:          wk.name,
+			WorkerID:        wk.id,
+			Method:          s.GetMethod(),
+			URL:             s.GetUrl(),
+			RequestHeaders:  headerMap(s.GetRequestHeader()),
+			RequestBody:     s.GetRequestBody(),
+			Status:          int(s.GetStatusCode()),
+			ResponseHeaders: headerMap(s.GetResponseHeader()),
+			ResponseBody:    s.GetResponseBody(),
+			LatencyMs:       s.GetLatencyMs(),
+			Error:           s.GetError(),
+			TS:              s.GetTs(),
+		})
+	}
+	oc.mu.Unlock()
+
+	b, _ := json.Marshal(views)
+	tshttp.WriteSuccess(&w, &map[string]string{"job": job, "samples": string(b)}, nil)
 }
 
 // GetInfo reports cluster state + topology for the web control.

@@ -90,6 +90,16 @@
   .chip:hover { color:var(--ink); border-color: rgba(57,135,229,.55); }
   .hint { font-size:11px; color:var(--muted); margin-top:7px; }
   .hint code { background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--ink-2); }
+  .smp { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:820px){ .smp { grid-template-columns:1fr; } }
+  .smp h3 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:0 0 6px; display:flex; align-items:center; gap:8px; }
+  .smp .line { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--ink-2); word-break:break-all; margin-bottom:6px; }
+  .smp pre { background:var(--plane); border:1px solid var(--border); border-radius:8px; padding:8px; margin:0 0 8px;
+    font-size:11px; color:var(--ink-2); overflow:auto; max-height:170px; white-space:pre-wrap; word-break:break-all; }
+  .smp-badge { font-size:11px; font-weight:680; padding:2px 8px; border-radius:20px; }
+  .smp-badge.ok { background:rgba(12,163,12,.18); color:#3fb950; }
+  .smp-badge.warn { background:rgba(250,178,25,.18); color:#fab219; }
+  .smp-badge.bad { background:rgba(208,59,59,.2); color:#ff6b6b; }
   button {
     cursor: pointer; border: none; border-radius: 8px; padding: 10px 15px;
     font-size: 14px; font-weight: 600; color: #fff; margin-top: 14px;
@@ -219,6 +229,7 @@
       <textarea id="body" placeholder='{"email":"user{{seq}}@test.io","id":"{{uuid}}","age":{{randInt 18 65}}}'></textarea>
       <div class="chips" id="tplChips"></div>
       <div class="hint">Click a token to insert it. The <b>Target URL</b> supports tokens too, e.g. <code>?rid={{uuid}}</code>. Each request gets fresh values.</div>
+      <label class="toggle"><input type="checkbox" id="verbose" /> verbose — record &amp; show the last request/response</label>
       <div class="row" style="margin-top:12px">
         <button class="start" style="flex:1" onclick="startTest()">▶ Start</button>
         <button class="stop"  style="flex:1" onclick="stopTest()">■ Stop</button>
@@ -295,6 +306,24 @@
       <table id="sampleTable"><thead><tr>
         <th>Elapsed</th><th>Req/s</th><th>Avg ms</th><th>Min ms</th><th>Max ms</th><th>Requests</th><th>Errors</th><th>Err %</th><th>Workers</th>
       </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- verbose: last request / response -->
+  <div class="card hidden" id="sampleCard">
+    <h2>Last request / response <span id="sampleMeta" style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:500"></span></h2>
+    <div class="smp">
+      <div>
+        <h3>Request</h3>
+        <div class="line" id="smpReqLine"></div>
+        <pre id="smpReqHeaders"></pre>
+        <pre id="smpReqBody"></pre>
+      </div>
+      <div>
+        <h3>Response <span id="smpStatus" class="smp-badge"></span></h3>
+        <pre id="smpRespHeaders"></pre>
+        <pre id="smpRespBody"></pre>
+      </div>
     </div>
   </div>
 
@@ -423,6 +452,7 @@ async function startTest(){
 
   const conf={ name, url:$('url').value.trim(), method:$('method').value, concurrence:parseInt($('concurrence').value,10)||1 };
   const body=$('body').value; if(body) conf.body=body;   // supports {{tokens}}, expanded per request by the worker
+  conf.verbose = $('verbose').checked;                    // worker records the last request/response for this job
   try{
     const r=await call('/api/v1/start','start',conf);
     if(r.error && r.error.code){ toast('Start failed', r.error.message, 'error'); logline('start failed', r); return; }
@@ -446,6 +476,7 @@ async function loadMetrics(){
   // watched test changed (manual pick or auto-switch after a stop) → start a fresh
   // buffer so the charts never mix two tests' timelines (was the "distortion" bug)
   if(name!==watchedName){ watchedName=name; samples=[]; prev=null; renderAll(); }
+  loadSample(name);   // verbose panel (no-op / hidden if the job isn't verbose)
   try{
     const r=await call('/api/v1/metrics','metrics',{name});
     const d=r.data;
@@ -782,6 +813,31 @@ async function rediscoverWorkers(){
     toast('Rediscovered workers', (d.added||'0')+' new · '+(d.workers||'0')+' total', 'ok');
     renderWorkers();
   }catch(e){ setConn(false); toast('Rediscover failed', e.message, 'error'); }
+}
+
+/* ---------- verbose: last request / response ---------- */
+function hdrLines(o){ return Object.entries(o||{}).map(([k,v])=>k+': '+v).join('\n'); }
+async function loadSample(name){
+  const card=$('sampleCard');
+  try{
+    const r=await call('/api/v1/sample','sample',{name});
+    const d=r.data||{};
+    let arr=[]; try{ arr=JSON.parse(d.samples||'[]'); }catch(e){}
+    if(!arr.length){ card.classList.add('hidden'); return; }
+    arr.sort((a,b)=>(b.ts||0)-(a.ts||0));   // most recent across workers
+    const s=arr[0];
+    card.classList.remove('hidden');
+    const when = s.ts ? new Date(s.ts).toLocaleTimeString() : '';
+    $('sampleMeta').textContent = `— ${s.worker||''} · ${when} · ${(s.latencyMs||0).toFixed(1)} ms`;
+    $('smpReqLine').textContent = `${s.method||''} ${s.url||''}`;
+    $('smpReqHeaders').textContent = hdrLines(s.requestHeaders) || '(no headers)';
+    $('smpReqBody').textContent = s.requestBody || '(empty body)';
+    const badge=$('smpStatus');
+    if(s.error){ badge.textContent='ERROR'; badge.className='smp-badge bad'; }
+    else { badge.textContent=s.status; badge.className='smp-badge '+((s.status>=200&&s.status<300)?'ok':'warn'); }
+    $('smpRespHeaders').textContent = s.error ? '' : (hdrLines(s.responseHeaders) || '(no headers)');
+    $('smpRespBody').textContent = s.error ? s.error : (s.responseBody || '(empty body)');
+  }catch(e){ /* leave last render; ignore transient errors */ }
 }
 
 /* ---------- template tokens (generated params) ---------- */

@@ -75,6 +75,10 @@ type Tsunami struct {
 
 	// shell service
 	shell *Shell
+
+	// verbose records the last request/response for this job (see sample.go)
+	verbose bool
+	sample  *sampleRec
 }
 
 // Init is used to initiaize parameters, logging and workers
@@ -115,8 +119,11 @@ func (ts *Tsunami) Init(maxQueues int) {
 		WriteTimeout: time.Second * 30,
 		IsTLS:        isTLS,
 		Dial:         func(addr string) (net.Conn, error) { return fasthttp.DialTimeout(addr, time.Second*60) }}
+	if ts.verbose {
+		ts.sample = &sampleRec{}
+	}
 	for i := 0; i < ts.conf.Concurrence; i++ {
-		worker := Worker{Done: &ts.done, conf: ts.conf, client: c}
+		worker := Worker{Done: &ts.done, conf: ts.conf, client: c, sample: ts.sample}
 		ts.AddWorker(worker)
 	}
 }
