@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -24,6 +28,9 @@ var AllowOrigin = "*"
 
 // Listen port
 var Listen = ":8080"
+
+// version is set at build time via -ldflags "-X main.version=<tag>"
+var version = "dev"
 
 // worker state
 // Cycle of State
@@ -76,9 +83,6 @@ type Worker struct {
 	//maxQuata maximum concurrent request
 	maxQouta int
 
-	//remainingQouta is the left of curcurrent request
-	remainingQouta int
-
 	gRPCClient *GRPCClient
 }
 
@@ -104,6 +108,49 @@ type Ocean struct {
 	jobToWorkers map[string][]*WorkerInfo
 
 	viper *viper.Viper
+
+	//etcd is the long-lived registry/coordination client
+	etcd *tsetcd.Client
+	//masterID uniquely identifies this ocean replica
+	masterID string
+	//masterLease binds this master's reservations; expires if the master dies
+	masterLease clientv3.LeaseID
+
+	//resKeys mirrors every reservation key -> count (from watchReservations)
+	resKeys map[string]int
+	//resByWorker is the per-worker sum of reservations (used capacity)
+	resByWorker map[string]int
+
+	//allJobs mirrors fleet-wide job metadata (from watchJobs) so any master can
+	//list/stop/report on jobs owned by any master
+	allJobs map[string]JobMeta
+	//masters mirrors the live master set (from watchMasters) for the topology view
+	masters map[string]MasterMeta
+
+	//mu guards workers/jobs/jobToWorkers/resKeys/resByWorker/allJobs/masters
+	mu sync.RWMutex
+}
+
+//JobAssign is one worker's share of a job
+type JobAssign struct {
+	WorkerID string `json:"workerID"`
+	Count    int    `json:"count"`
+}
+
+//JobMeta is the fleet-wide record of a running job, stored in etcd
+type JobMeta struct {
+	Name        string      `json:"name"`
+	Owner       string      `json:"owner"`
+	URL         string      `json:"url"`
+	Host        string      `json:"host"`
+	Assignments []JobAssign `json:"assignments"`
+}
+
+//MasterMeta is a master's registry record
+type MasterMeta struct {
+	Name string `json:"name"`
+	HTTP string `json:"http"`
+	IP   string `json:"ip"`
 }
 
 func readConf() *viper.Viper {
@@ -135,8 +182,13 @@ func readConf() *viper.Viper {
 	viper.SetDefault("registry.request_timeout", 2)
 	viper.SetDefault("registry.dial_timeout", 2)
 
-	//Key range of client
-	viper.SetDefault("registry.client_config_key", "tsunami_config_client_")
+	//Coordination key prefixes + lease TTL (active-active multi-master)
+	viper.SetDefault("registry.worker_prefix", "/tsunami/workers/")
+	viper.SetDefault("registry.master_prefix", "/tsunami/masters/")
+	viper.SetDefault("registry.reservation_prefix", "/tsunami/reservations/")
+	viper.SetDefault("registry.job_prefix", "/tsunami/jobs/")
+	viper.SetDefault("registry.lock_prefix", "/tsunami/locks/worker/")
+	viper.SetDefault("lease.ttl", 10)
 
 	err := viper.ReadInConfig() // Find and read the config file
 	if err != nil {             // Handle errors reading the config file
@@ -152,35 +204,179 @@ func New(conf *viper.Viper) *Ocean {
 		jobs:         make(map[string]*Job),
 		workers:      make(map[string]*Worker),
 		jobToWorkers: make(map[string][]*WorkerInfo),
+		resKeys:      make(map[string]int),
+		resByWorker:  make(map[string]int),
+		allJobs:      make(map[string]JobMeta),
+		masters:      make(map[string]MasterMeta),
 	}
 }
 
-//NewEtcdClient create ocean client
-func (oc *Ocean) NewEtcdClient() tsetcd.EtcdClient {
-	return tsetcd.EtcdClient{
-		Conf: clientv3.Config{
-			Endpoints:   oc.viper.GetStringSlice("registry.endpoints"),
-			DialTimeout: time.Second * time.Duration(oc.viper.GetInt("registry.dial_timeout")),
-		},
-		RequestTimeOut: time.Second * time.Duration(oc.viper.GetInt("registry.request_timeout")),
-		Done:           false,
+//workerByID returns a worker by id (nil if unknown). Takes the read lock.
+func (oc *Ocean) workerByID(id string) *Worker {
+	oc.mu.RLock()
+	defer oc.mu.RUnlock()
+	return oc.workers[id]
+}
+
+//workerIDFromResKey extracts the worker id from a reservation key
+// "<reservation_prefix><workerID>/<masterID>/<job>".
+func workerIDFromResKey(key, prefix string) string {
+	rest := strings.TrimPrefix(key, prefix)
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		return rest[:i]
+	}
+	return rest
+}
+
+//recomputeReservationsLocked rebuilds resByWorker from resKeys. Caller holds mu.
+func (oc *Ocean) recomputeReservationsLocked() {
+	prefix := oc.viper.GetString("registry.reservation_prefix")
+	sum := make(map[string]int)
+	for key, n := range oc.resKeys {
+		sum[workerIDFromResKey(key, prefix)] += n
+	}
+	oc.resByWorker = sum
+}
+
+//watchReservations keeps a live mirror of all reservation keys so every master
+//sees the fleet-wide used capacity (dead masters' reservations expire via lease).
+func (oc *Ocean) watchReservations() {
+	prefix := oc.viper.GetString("registry.reservation_prefix")
+
+	if kvs, err := oc.etcd.GetPrefix(prefix); err == nil {
+		oc.mu.Lock()
+		for _, kv := range kvs {
+			n, _ := strconv.Atoi(string(kv.Value))
+			oc.resKeys[kv.Key] = n
+		}
+		oc.recomputeReservationsLocked()
+		oc.mu.Unlock()
+	}
+
+	for resp := range oc.etcd.WatchPrefix(context.Background(), prefix) {
+		oc.mu.Lock()
+		for _, ev := range resp.Events {
+			key := string(ev.Kv.Key)
+			if ev.Type == clientv3.EventTypeDelete {
+				delete(oc.resKeys, key)
+			} else {
+				n, _ := strconv.Atoi(string(ev.Kv.Value))
+				oc.resKeys[key] = n
+			}
+		}
+		oc.recomputeReservationsLocked()
+		oc.mu.Unlock()
 	}
 }
 
-//DiscoverWorkers reads the worker registry from etcd and adds any workers not
-//already known to this ocean. Returns the number of newly added workers.
-//Existing workers (and their running jobs) are left untouched.
+//initEtcd opens the long-lived registry client and registers this master under
+//a lease so peers can see it and its reservations auto-expire if it dies.
+func (oc *Ocean) initEtcd() error {
+	ttl := int64(oc.viper.GetInt("lease.ttl"))
+	if ttl <= 0 {
+		ttl = 10
+	}
+	cli, err := tsetcd.NewClient(
+		oc.viper.GetStringSlice("registry.endpoints"),
+		time.Second*time.Duration(oc.viper.GetInt("registry.dial_timeout")),
+		time.Second*time.Duration(oc.viper.GetInt("registry.request_timeout")),
+		int(ttl),
+	)
+	if err != nil {
+		return err
+	}
+	oc.etcd = cli
+	oc.masterID = oc.viper.GetString("id")
+
+	lease, err := cli.Grant(ttl)
+	if err != nil {
+		return err
+	}
+	oc.masterLease = lease
+	ip := ""
+	if p := tshttp.GetIP(); p != nil {
+		ip = p.String()
+	}
+	meta, _ := json.Marshal(MasterMeta{
+		Name: oc.viper.GetString("name"),
+		HTTP: oc.viper.GetString("endpoints.http"),
+		IP:   ip,
+	})
+	if err := cli.Put(oc.viper.GetString("registry.master_prefix")+oc.masterID, string(meta), clientv3.WithLease(lease)); err != nil {
+		return err
+	}
+	return cli.KeepAlive(lease)
+}
+
+//watchJobs keeps a live fleet-wide mirror of job metadata (job_prefix).
+func (oc *Ocean) watchJobs() {
+	prefix := oc.viper.GetString("registry.job_prefix")
+	load := func(kvKey string, val []byte, del bool) {
+		name := strings.TrimPrefix(kvKey, prefix)
+		oc.mu.Lock()
+		if del {
+			delete(oc.allJobs, name)
+		} else {
+			var m JobMeta
+			if json.Unmarshal(val, &m) == nil {
+				oc.allJobs[name] = m
+			}
+		}
+		oc.mu.Unlock()
+	}
+	if kvs, err := oc.etcd.GetPrefix(prefix); err == nil {
+		for _, kv := range kvs {
+			load(kv.Key, kv.Value, false)
+		}
+	}
+	for resp := range oc.etcd.WatchPrefix(context.Background(), prefix) {
+		for _, ev := range resp.Events {
+			load(string(ev.Kv.Key), ev.Kv.Value, ev.Type == clientv3.EventTypeDelete)
+		}
+	}
+}
+
+//watchMasters keeps a live mirror of the master set (master_prefix).
+func (oc *Ocean) watchMasters() {
+	prefix := oc.viper.GetString("registry.master_prefix")
+	load := func(kvKey string, val []byte, del bool) {
+		id := strings.TrimPrefix(kvKey, prefix)
+		oc.mu.Lock()
+		if del {
+			delete(oc.masters, id)
+		} else {
+			var m MasterMeta
+			if json.Unmarshal(val, &m) == nil {
+				oc.masters[id] = m
+			}
+		}
+		oc.mu.Unlock()
+	}
+	if kvs, err := oc.etcd.GetPrefix(prefix); err == nil {
+		for _, kv := range kvs {
+			load(kv.Key, kv.Value, false)
+		}
+	}
+	for resp := range oc.etcd.WatchPrefix(context.Background(), prefix) {
+		for _, ev := range resp.Events {
+			load(string(ev.Kv.Key), ev.Kv.Value, ev.Type == clientv3.EventTypeDelete)
+		}
+	}
+}
+
+//DiscoverWorkers (re)seeds oc.workers from the registry prefix — used at boot
+//and by the /workers/reload endpoint. Returns the number of newly added workers.
 func (oc *Ocean) DiscoverWorkers() (int, error) {
-	etcdClient := oc.NewEtcdClient()
-	list, err := etcdClient.GetRange(oc.viper.GetString("registry.client_config_key"))
+	list, err := oc.etcd.GetPrefix(oc.viper.GetString("registry.worker_prefix"))
 	if err != nil {
 		return 0, err
 	}
-
 	added := 0
-	for _, v := range list {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+	for _, kv := range list {
 		conf := tsregistry.Conf{}
-		if err := json.Unmarshal(v, &conf); err != nil {
+		if err := json.Unmarshal(kv.Value, &conf); err != nil {
 			continue
 		}
 		if conf.ID == "" || oc.workers[conf.ID] != nil {
@@ -192,6 +388,39 @@ func (oc *Ocean) DiscoverWorkers() (int, error) {
 	return added, nil
 }
 
+//watchWorkers reacts to registry changes in real time: PUT adds/refreshes a
+//worker (dialing its gRPC endpoint), DELETE (or lease expiry) prunes it.
+func (oc *Ocean) watchWorkers() {
+	prefix := oc.viper.GetString("registry.worker_prefix")
+	for resp := range oc.etcd.WatchPrefix(context.Background(), prefix) {
+		for _, ev := range resp.Events {
+			id := strings.TrimPrefix(string(ev.Kv.Key), prefix)
+			if ev.Type == clientv3.EventTypeDelete {
+				oc.mu.Lock()
+				if w := oc.workers[id]; w != nil {
+					if w.gRPCClient != nil {
+						w.gRPCClient.Close()
+					}
+					delete(oc.workers, id)
+					log.Printf("registry: worker %s left", id)
+				}
+				oc.mu.Unlock()
+				continue
+			}
+			conf := tsregistry.Conf{}
+			if err := json.Unmarshal(ev.Kv.Value, &conf); err != nil || conf.ID == "" {
+				continue
+			}
+			oc.mu.Lock()
+			if oc.workers[conf.ID] == nil {
+				oc.workers[conf.ID] = oc.NewWorker(&conf)
+				log.Printf("registry: worker %s joined (%s)", conf.ID, conf.Endpoint)
+			}
+			oc.mu.Unlock()
+		}
+	}
+}
+
 //NewWorker create a worker
 func (oc *Ocean) NewWorker(wrkConf *tsregistry.Conf) *Worker {
 
@@ -200,27 +429,42 @@ func (oc *Ocean) NewWorker(wrkConf *tsregistry.Conf) *Worker {
 	gRPCClient.InitClient(wrkConf.Endpoint)
 
 	return &Worker{
-		state:          WokerStateReady,
-		endpoint:       wrkConf.Endpoint,
-		ID:             wrkConf.ID,
-		name:           wrkConf.Name,
-		maxQouta:       wrkConf.MaxConcurrences,
-		remainingQouta: wrkConf.MaxConcurrences,
-		gRPCClient:     gRPCClient,
+		state:      WokerStateReady,
+		endpoint:   wrkConf.Endpoint,
+		ID:         wrkConf.ID,
+		name:       wrkConf.Name,
+		maxQouta:   wrkConf.MaxConcurrences,
+		gRPCClient: gRPCClient,
 	}
 }
 
 func main() {
+
+	for _, a := range os.Args[1:] {
+		if a == "--version" || a == "-v" {
+			fmt.Println("ocean", version)
+			return
+		}
+	}
 
 	conf := readConf()
 	ocs := New(conf)
 
 	log.Println("Master ID: ", ocs.viper.GetString("id"))
 
-	//Get list of woker from registry(Etcd)
-	if _, err := ocs.DiscoverWorkers(); err != nil {
-		log.Fatalf("etcd connect failed: %v\n", err.Error())
+	//Connect to the registry and register this master under a lease
+	if err := ocs.initEtcd(); err != nil {
+		log.Fatalf("registry: init failed: %v\n", err.Error())
 	}
+
+	//Seed the current worker set, then react to joins/leaves in real time
+	if _, err := ocs.DiscoverWorkers(); err != nil {
+		log.Fatalf("registry: seed workers failed: %v\n", err.Error())
+	}
+	go ocs.watchWorkers()
+	go ocs.watchReservations()
+	go ocs.watchJobs()
+	go ocs.watchMasters()
 
 	go func() {
 		for true {

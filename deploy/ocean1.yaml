@@ -1,0 +1,13 @@
+name: ocean-1
+id: master-1
+endpoints:
+  http: 0.0.0.0:8080
+
+registry:
+  request_timeout: 2
+  dial_timeout: 2
+  endpoints:
+    - etcd:2379
+
+lease:
+  ttl: 10
