@@ -41,15 +41,16 @@ esac
 
 # token: env > keep existing config's token > required on first install
 if [ -z "$TOKEN" ] && [ -f "$CFG/config.yaml" ]; then
-  TOKEN="$(sed -n 's/.*token:[[:space:]]*"\{0,1\}\([^"[:space:]]*\).*/\1/p' "$CFG/config.yaml" | head -1)"
+  TOKEN="$(sed -n 's/.*token:[[:space:]]*"\{0,1\}\([^"[:space:]]*\).*/\1/p' "$CFG/config.yaml" | head -n1 || true)"
 fi
 [ -z "$TOKEN" ] && err "set TOKEN=<shared worker token> on first install"
 
-# resolve newest release (list is newest-first; includes prereleases)
+# resolve newest release (list is newest-first; includes prereleases). Download
+# the JSON fully first so no early-closing pipe trips pipefail.
 if [ -z "$VERSION" ]; then
-  VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" \
-    | grep -m1 '"tag_name":' | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/')"
-  [ -z "$VERSION" ] && err "could not resolve a release; pass TSUNAMI_VERSION=vX.Y.Z"
+  rels="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" 2>/dev/null || true)"
+  VERSION="$(printf '%s\n' "$rels" | grep '"tag_name":' | head -n1 | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/' || true)"
+  [ -z "$VERSION" ] && VERSION="v0.2.0"   # fallback if the API is unavailable/rate-limited
 fi
 log "control plane ${VERSION} (${ARCH}); advertising ${PUBLIC_IP}"
 
@@ -148,7 +149,7 @@ systemctl restart ocean                    # pick up the new binary/config
 nginx -t >/dev/null 2>&1 && systemctl restart nginx || true
 
 sleep 3
-log "services: $(systemctl is-active etcd ocean nginx 2>/dev/null | tr '\n' ' ')"
+log "services: $(systemctl is-active etcd ocean nginx 2>/dev/null | tr '\n' ' ' || true)"
 if curl -fsS -X POST http://127.0.0.1:8080/api/v1/info -d '{"cmd":"info","conf":{}}' >/dev/null 2>&1; then
   log "ocean API responding"
 else
