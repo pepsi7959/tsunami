@@ -11,8 +11,10 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	tsetcd "github.com/tsunami/etcd"
 	tshttp "github.com/tsunami/libs"
 	tsgrpc "github.com/tsunami/proto"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 )
 
@@ -54,6 +56,13 @@ type Ocean struct {
 	mu      sync.Mutex
 	workers map[string]*attachedWorker
 	jobs    map[string]*job
+
+	// discovery (optional): register this ocean in etcd so workers can find it
+	discovery     bool
+	advertiseGRPC string // address workers should dial (published to etcd)
+	httpAddr      string
+	etcd          *tsetcd.Client
+	lease         clientv3.LeaseID
 }
 
 func readConf() *viper.Viper {
@@ -78,6 +87,18 @@ func readConf() *viper.Viper {
 	v.SetDefault("endpoints.grpc", "0.0.0.0:8050") // worker attach stream server
 	v.SetDefault("max_connections", 1000)          // max attached workers
 
+	// discovery (optional): if registry.endpoints is set, register in etcd so
+	// workers discover + select oceans. advertise.grpc is the address workers
+	// dial (must be reachable by them); empty => auto from this host's IP.
+	v.SetDefault("registry.endpoints", []string{})
+	v.SetDefault("registry.request_timeout", 2)
+	v.SetDefault("registry.dial_timeout", 2)
+	v.SetDefault("advertise.grpc", "")
+	v.SetDefault("lease.ttl", 10)
+
+	// shared token required from workers on the attach stream (empty = open)
+	v.SetDefault("auth.token", "")
+
 	if err := v.ReadInConfig(); err != nil {
 		panic(fmt.Errorf("fatal error config file: %s", err))
 	}
@@ -86,14 +107,33 @@ func readConf() *viper.Viper {
 
 //New create Ocean
 func New(conf *viper.Viper) *Ocean {
-	return &Ocean{
+	oc := &Ocean{
 		viper:          conf,
 		id:             conf.GetString("id"),
 		name:           conf.GetString("name"),
 		maxConnections: conf.GetInt("max_connections"),
+		httpAddr:       conf.GetString("endpoints.http"),
 		workers:        make(map[string]*attachedWorker),
 		jobs:           make(map[string]*job),
+		discovery:      len(conf.GetStringSlice("registry.endpoints")) > 0,
 	}
+
+	// advertise address workers dial: explicit config, else this host's IP + the
+	// port of endpoints.grpc (0.0.0.0:8050 is not dialable by remote workers).
+	adv := conf.GetString("advertise.grpc")
+	if adv == "" {
+		port := "8050"
+		if _, p, err := net.SplitHostPort(conf.GetString("endpoints.grpc")); err == nil {
+			port = p
+		}
+		ip := "127.0.0.1"
+		if p := tshttp.GetIP(); p != nil {
+			ip = p.String()
+		}
+		adv = ip + ":" + port
+	}
+	oc.advertiseGRPC = adv
+	return oc
 }
 
 func main() {
@@ -107,6 +147,14 @@ func main() {
 	conf := readConf()
 	oc := New(conf)
 	log.Println("Ocean ID:", oc.id, "name:", oc.name)
+
+	// optional: register in etcd for worker discovery + selection
+	if oc.discovery {
+		if err := oc.initDiscovery(); err != nil {
+			log.Fatalf("discovery: %v", err)
+		}
+		log.Println("discovery: registered in etcd, advertising", oc.advertiseGRPC)
+	}
 
 	// worker attach gRPC server (workers dial IN and hold a stream)
 	grpcAddr := oc.viper.GetString("endpoints.grpc")

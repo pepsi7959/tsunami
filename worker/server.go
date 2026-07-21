@@ -10,6 +10,7 @@ import (
 	tsgrpc "github.com/tsunami/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 // OceanClient keeps the worker's single bidirectional stream to an ocean:
@@ -22,6 +23,7 @@ type OceanClient struct {
 	name     string
 	maxConc  int32
 	report   time.Duration // metrics report interval
+	token    string        // optional attach auth token
 
 	mu sync.Mutex // guards ctrl.services
 }
@@ -41,9 +43,17 @@ func methodName(m tsgrpc.HTTPMethod) string {
 	}
 }
 
-// Run keeps attaching to the given ocean endpoint, reconnecting on failure.
-func (c *OceanClient) Run(endpoint string) {
+// Run keeps a worker attached to an ocean. On every (re)connect it calls
+// resolve() to pick an ocean endpoint (a static one, or the least-loaded ocean
+// from etcd discovery), reconnecting on failure.
+func (c *OceanClient) Run(resolve func() string) {
 	for {
+		endpoint := resolve()
+		if endpoint == "" {
+			log.Printf("attach: no ocean available; retrying in 3s")
+			time.Sleep(3 * time.Second)
+			continue
+		}
 		if err := c.attachOnce(endpoint); err != nil {
 			log.Printf("attach: stream to %s ended: %v", endpoint, err)
 		}
@@ -61,7 +71,11 @@ func (c *OceanClient) attachOnce(endpoint string) error {
 	}
 	defer conn.Close()
 
-	stream, err := tsgrpc.NewTSAttachClient(conn).Attach(context.Background())
+	ctx := context.Background()
+	if c.token != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+c.token)
+	}
+	stream, err := tsgrpc.NewTSAttachClient(conn).Attach(ctx)
 	if err != nil {
 		return err
 	}

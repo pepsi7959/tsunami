@@ -363,8 +363,34 @@ func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
 	data["max_connections"] = fmt.Sprintf("%d", oc.maxConnections)
 	data["max_concurrent"] = fmt.Sprintf("%d", maxConcurrent)
 	data["remaining_Concurrent"] = fmt.Sprintf("%d", maxConcurrent-used)
-	data["jobs"] = strings.Join(names, ",")
 	oc.mu.Unlock()
+
+	// fleet merge: show peer oceans + all running jobs when discovery is enabled
+	if oc.discovery {
+		for _, o := range oc.allOceans() {
+			if o.ID == oc.id {
+				continue
+			}
+			g.Nodes = append(g.Nodes, topoNode{ID: "master:" + o.ID, Name: o.Name, Kind: "master", IP: o.GRPC, Endpoint: o.HTTP})
+		}
+		for _, fj := range oc.allFleetJobs() {
+			found := false
+			for _, n := range names {
+				if n == fj.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				names = append(names, fj.Name)
+			}
+			if fj.Target != "" && !seenTarget["target:"+fj.Target] {
+				seenTarget["target:"+fj.Target] = true
+				g.Nodes = append(g.Nodes, topoNode{ID: "target:" + fj.Target, Name: fj.Target, Kind: "target", Endpoint: fj.Target})
+			}
+		}
+	}
+	data["jobs"] = strings.Join(names, ",")
 
 	if b, err := json.Marshal(g); err == nil {
 		data["topology"] = string(b)

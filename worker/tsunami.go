@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	tsetcd "github.com/tsunami/etcd"
 	tshttp "github.com/tsunami/libs"
 	"github.com/valyala/fasthttp"
 )
@@ -341,13 +342,17 @@ func readConf() *viper.Viper {
 	// keeps an outbound stream. (etcd-based discovery is layered on top later.)
 	viper.SetDefault("ocean.endpoints", []string{"127.0.0.1:8050"})
 
-	// etcd endpoints (used for ocean discovery in the multi-ocean setup)
-	viper.SetDefault("registry.endpoints", []string{"localhost:2379"})
+	// etcd endpoints for ocean discovery. Empty by default => use ocean.endpoints
+	// directly (static bootstrap); set this to enable discovery/selection.
+	viper.SetDefault("registry.endpoints", []string{})
 	viper.SetDefault("registry.request_timeout", 2)
 	viper.SetDefault("registry.dial_timeout", 2)
 
 	// metrics report interval (seconds) up the attach stream
 	viper.SetDefault("report.interval", 2)
+
+	// shared token presented to the ocean on attach (empty = none)
+	viper.SetDefault("auth.token", "")
 
 	err := viper.ReadInConfig() // Find and read the config file
 	if err != nil {             // Handle errors reading the config file
@@ -393,15 +398,33 @@ func main() {
 		name:     ctrl.name,
 		maxConc:  int32(config.GetInt("concurence")),
 		report:   time.Duration(interval) * time.Second,
+		token:    config.GetString("auth.token"),
 	}
 
-	// P1 bootstrap: dial the first configured ocean directly (etcd-based ocean
-	// discovery + least-loaded selection is layered on in a later phase).
-	endpoint := "127.0.0.1:8050"
-	if oceans := config.GetStringSlice("ocean.endpoints"); len(oceans) > 0 {
-		endpoint = oceans[0]
+	// Resolver picks which ocean to attach to on each (re)connect.
+	var resolve func() string
+	if reg := config.GetStringSlice("registry.endpoints"); len(reg) > 0 {
+		// discovery: choose the least-loaded ocean from etcd (by free conn slots)
+		etcdCli, err := tsetcd.NewClient(
+			reg,
+			time.Second*time.Duration(config.GetInt("registry.dial_timeout")),
+			time.Second*time.Duration(config.GetInt("registry.request_timeout")),
+			10,
+		)
+		if err != nil {
+			log.Fatalf("discovery: connect etcd failed: %v", err)
+		}
+		log.Printf("worker: discovering oceans via etcd %v", reg)
+		resolve = func() string { return selectOcean(etcdCli) }
+	} else {
+		// static bootstrap: first configured ocean endpoint
+		endpoint := "127.0.0.1:8050"
+		if oceans := config.GetStringSlice("ocean.endpoints"); len(oceans) > 0 {
+			endpoint = oceans[0]
+		}
+		log.Printf("worker: attaching to ocean %s", endpoint)
+		resolve = func() string { return endpoint }
 	}
 
-	log.Printf("worker: attaching to ocean %s", endpoint)
-	client.Run(endpoint) // blocks: attach + reconnect loop
+	client.Run(resolve) // blocks: resolve + attach + reconnect loop
 }

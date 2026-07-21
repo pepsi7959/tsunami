@@ -6,6 +6,7 @@ import (
 
 	tsgrpc "github.com/tsunami/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 )
 
@@ -18,6 +19,15 @@ type attachServer struct {
 }
 
 func (s *attachServer) Attach(stream grpc.BidiStreamingServer[tsgrpc.WorkerMessage, tsgrpc.OceanMessage]) error {
+	// optional shared-token auth
+	if tok := s.oc.viper.GetString("auth.token"); tok != "" {
+		md, _ := metadata.FromIncomingContext(stream.Context())
+		vals := md.Get("authorization")
+		if len(vals) == 0 || vals[0] != "Bearer "+tok {
+			return errors.New("unauthorized: missing or invalid attach token")
+		}
+	}
+
 	// first message must be Register
 	first, err := stream.Recv()
 	if err != nil {
@@ -83,6 +93,7 @@ func (oc *Ocean) addWorker(w *attachedWorker) bool {
 	}
 	// replace any stale entry with the same id
 	oc.workers[w.id] = w
+	go oc.publishOcean() // refresh etcd counters (no-op if discovery off)
 	return true
 }
 
@@ -100,6 +111,7 @@ func (oc *Ocean) removeWorker(id string) {
 	for _, j := range oc.jobs {
 		delete(j.assignments, id)
 	}
+	go oc.publishOcean() // refresh etcd counters (no-op if discovery off)
 }
 
 // onReport stores the latest per-job metric from a worker.
