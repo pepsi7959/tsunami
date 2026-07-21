@@ -230,16 +230,25 @@
       <div class="chips" id="tplChips"></div>
       <div class="hint">Click a token to insert it. The <b>Target URL</b> supports tokens too, e.g. <code>?rid={{uuid}}</code>. Each request gets fresh values.</div>
       <label class="toggle"><input type="checkbox" id="verbose" /> verbose — record &amp; show the last request/response</label>
-      <div class="row" style="margin-top:12px">
-        <button class="start" style="flex:1" onclick="startTest()">▶ Start</button>
-        <button class="stop"  style="flex:1" onclick="stopTest()">■ Stop</button>
-      </div>
+      <button class="start" style="width:100%; margin-top:12px" onclick="startTest()">▶ Start test</button>
     </div>
   </div>
 
+  <!-- running tests: manage (stop) + choose which one to observe -->
+  <div class="card">
+    <div class="toolbar" style="margin-bottom:12px">
+      <h2 style="margin:0">Running tests (<span id="rt_count">0</span>)</h2>
+      <div class="spacer"></div>
+      <button class="ghost mini" onclick="loadInfo()">Refresh</button>
+    </div>
+    <div id="runningList"></div>
+  </div>
+
+  <!-- observe controls: what the charts below are showing -->
   <div class="card">
     <div class="toolbar">
-      <div class="grow"><label>Watching test</label><select id="mname" onchange="onWatchChange()"><option value="">— no running tests —</option></select></div>
+      <div class="grow">Viewing: <b id="viewingName">— none —</b></div>
+      <select id="mname" onchange="onWatchChange()" style="display:none"></select>
       <button class="ghost" onclick="loadMetrics()">Fetch now</button>
       <div class="spacer"></div>
       <label class="toggle"><input type="checkbox" id="autopoll" checked onchange="togglePoll()" /> auto-refresh (2s)</label>
@@ -421,7 +430,10 @@ async function loadInfo(quiet){
     $('infoBox').innerHTML = rows.map(()=>`<div class="k"></div><div class="v"></div>`).join('');
     [...$('infoBox').children].forEach((el,i)=>{ el.textContent = i%2 ? (rows[i>>1][1] ?? '—') : rows[i>>1][0]; });
     populateTests(d.jobs);
-    if(d.topology){ try{ renderTopo(JSON.parse(d.topology)); }catch(err){} }
+    let topo=null;
+    if(d.topology){ try{ topo=JSON.parse(d.topology); renderTopo(topo); }catch(err){} }
+    const names=(d.jobs||'').split(',').map(s=>s.trim()).filter(Boolean);
+    renderRunning(names, topo);
     if(!quiet) logline('info ok', d);
   }catch(e){ setConn(false); if(!quiet) logline('info failed: '+e.message); }
 }
@@ -436,7 +448,60 @@ function populateTests(csv){
   names.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
   sel.value = names.includes(cur) ? cur : names[0];
 }
-function onWatchChange(){ loadMetrics(); }  // loadMetrics resets the buffer when the watched test changes
+function onWatchChange(){ $('viewingName').textContent = $('mname').value || '— none —'; loadMetrics(); }
+
+/* ---------- running tests list (manage + select) ---------- */
+function cssId(s){ return 'rt_'+String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
+function renderRunning(names, topo){
+  $('rt_count').textContent = names.length;
+  const list=$('runningList');
+  if(!names.length){ list.innerHTML='<div class="page-sub">No running tests — start one on the left.</div>'; return; }
+  // job -> target url (from topology load edges)
+  const tgt={}; const nodes=(topo&&topo.nodes)||[]; const edges=(topo&&topo.edges)||[];
+  edges.forEach(e=>{ if(e.kind==='load'&&e.job){ const n=nodes.find(x=>x.id===e.to); if(n) tgt[e.job]=n.name; } });
+  const watched=$('mname').value;
+  list.innerHTML='';
+  names.forEach(name=>{
+    const viewing = name===watched;
+    const row=document.createElement('div'); row.className='conn'+(viewing?' active':''); row.id=cssId(name);
+    const meta=document.createElement('div'); meta.className='meta';
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=name;
+    const u=document.createElement('div'); u.className='u'; u.textContent=(tgt[name]||'—')+' · loading…';
+    meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
+    const mk=(t,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.textContent=t; b.onclick=fn; return b; };
+    if(viewing){ const bd=document.createElement('span'); bd.className='badge on'; bd.textContent='viewing'; row.appendChild(bd); }
+    else row.appendChild(mk('Watch','ghost',()=>watchTest(name)));
+    row.appendChild(mk('■ Stop','stop',()=>stopNamed(name)));
+    list.appendChild(row);
+    fillRunStat(name, tgt[name]||'');
+  });
+}
+async function fillRunStat(name, target){
+  try{
+    const r=await call('/api/v1/metrics','metrics',{name}); const d=r.data; if(!d) return;
+    const row=$(cssId(name)); if(!row) return;
+    const u=row.querySelector('.u'); if(!u) return;
+    const rps=Math.round(+d.rps||0), req=+d.RequestCount||0, err=+d.error_count||0;
+    const rate = req>0 ? (err/req*100) : 0;
+    u.textContent = `${target||'—'} · ${compact(rps)} rps · ${rate.toFixed(1)}% err`;
+  }catch(e){}
+}
+function watchTest(name){
+  $('mname').value=name; $('viewingName').textContent=name;
+  watchedName=null;              // force loadMetrics to reset the chart buffer
+  onWatchChange();
+  loadInfo(true);                // refresh row highlight
+}
+async function stopNamed(name){
+  try{
+    const r=await call('/api/v1/stop','stop',{name});
+    if(r.error && r.error.code){ toast('Stop failed', r.error.message, 'error'); return; }
+    logline('stop → '+name, r);
+    toast('Test stopped', `“${name}” stopped.`, 'ok');
+    if($('mname').value===name){ $('mname').value=''; $('viewingName').textContent='— none —'; watchedName=null; samples=[]; prev=null; renderAll(); }
+    loadInfo();
+  }catch(e){ setConn(false); toast('Stop failed', e.message, 'error'); }
+}
 async function startTest(){
   const name=$('name').value.trim();
   if(!name){ toast('Enter a test name', 'Please give the test a name before starting.', 'warn'); return; }
@@ -458,21 +523,17 @@ async function startTest(){
     if(r.error && r.error.code){ toast('Start failed', r.error.message, 'error'); logline('start failed', r); return; }
     logline('start → '+name, r);
     samples=[]; prev=null; renderAll();
-    await loadInfo(true);             // refresh the dropdown from the master…
+    await loadInfo(true);             // refresh running-tests list from the master…
     $('mname').value=name;            // …then watch the test we just started
+    $('viewingName').textContent=name;
     if($('autopoll').checked) startPoll();
     toast('Test started', `“${name}” is now running against ${conf.url||'the target'}.`, 'ok');
   }catch(e){ setConn(false); toast('Start failed', e.message, 'error'); logline('start failed: '+e.message); }
 }
-async function stopTest(){
-  const name=$('mname').value.trim();
-  try{ const r=await call('/api/v1/stop','stop',{name}); logline('stop → '+name, r); loadInfo(); }
-  catch(e){ setConn(false); logline('stop failed: '+e.message); }
-}
 async function loadMetrics(){
   if(tick++ % 5 === 0) loadInfo(true);   // keep the running-tests dropdown fresh (~every 10s)
   const name=$('mname').value.trim();
-  if(!name) return;                       // nothing selected / no running tests
+  if(!name){ $('viewingName').textContent='— none —'; return; }   // nothing selected / no running tests
   // watched test changed (manual pick or auto-switch after a stop) → start a fresh
   // buffer so the charts never mix two tests' timelines (was the "distortion" bug)
   if(name!==watchedName){ watchedName=name; samples=[]; prev=null; renderAll(); }
