@@ -6,7 +6,7 @@
 <title>Tsunami — Web Control</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
 <script>document.documentElement.setAttribute('data-theme', new URLSearchParams(location.search).get('theme') || localStorage.getItem('tsu_theme') || 'dark');</script>
 <style>
   /* --- semantic, tokenized palette · light default, dark opt-in, whitelabel-ready --- */
@@ -21,7 +21,7 @@
     --grid:       #e5eaf0;
     --axis:       #cbd5e1;
     --border:     rgba(15,23,42,0.12);
-    --primary:    #2563eb;               /* actions / links */
+    --primary:    #ea580c;               /* actions / links (orange) */
     --success:    #16a34a;               /* healthy / positive only */
     --warn:       #d97706;
     --danger:     #dc2626;               /* errors / destructive */
@@ -31,32 +31,34 @@
     --s-crit:     var(--danger);
     --good:       var(--success);
     --radius: 14px;
-    --grad: linear-gradient(135deg, #22d3ee 0%, #3b82f6 52%, #8b5cf6 100%);
-    --sans: "Sora", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --grad: linear-gradient(135deg, #fbbf24 0%, #fb923c 46%, #f97316 100%);
+    --sans: "Source Sans 3", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --display: "Lexend", var(--sans);
   }
   [data-theme="dark"] {
     color-scheme: dark;
-    --plane:      #0a0e17;               /* cool navy-black */
-    --surface:    #111726;
-    --surface-2:  #1a2233;
-    --ink:        #f5f8ff;
-    --ink-2:      #aeb9cf;
-    --muted:      #8593ad;               /* ≥AA on navy */
-    --grid:       #1a2233;
-    --axis:       #2a3448;
-    --border:     rgba(255,255,255,0.08);
-    --primary:    #4da3ff;               /* cyan-blue (text/links/borders) */
-    --success:    #00e39a;               /* mint */
-    --warn:       #f5b301;
-    --danger:     #ff5470;
+    --plane:      #0e0c0b;               /* warm charcoal */
+    --surface:    #17130f;
+    --surface-2:  #221c16;
+    --ink:        #f6f3ee;
+    --ink-2:      #c9c2b6;
+    --muted:      #948b7d;               /* ≥AA on warm charcoal */
+    --grid:       #221c16;
+    --axis:       #33291f;
+    --border:     rgba(255,255,255,0.09);
+    --primary:    #fb923c;               /* orange (text/links/borders) */
+    --success:    #34d399;               /* green */
+    --warn:       #f59e0b;
+    --danger:     #f87171;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: var(--sans); background: var(--plane); color: var(--ink); }
-  /* soft top glow (crypto-wallet vibe), dark theme only */
+  h1, h2, .page-title, .tile .v, .me-title { font-family: var(--display); }
+  /* soft warm top glow, dark theme only */
   [data-theme="dark"] body {
     background:
-      radial-gradient(1100px 560px at 50% -8%, rgba(59,130,246,.12), transparent 62%),
-      radial-gradient(900px 500px at 88% 4%, rgba(139,92,246,.08), transparent 60%),
+      radial-gradient(1100px 560px at 50% -8%, rgba(249,115,22,.13), transparent 62%),
+      radial-gradient(900px 500px at 88% 4%, rgba(251,146,60,.07), transparent 60%),
       var(--plane);
     background-attachment: fixed;
   }
@@ -69,7 +71,7 @@
   }
   header .brandmark { display:inline-flex; align-items:center; justify-content:center;
     width:36px; height:36px; border-radius:11px; background:var(--grad); color:#fff;
-    box-shadow: 0 6px 16px rgba(59,130,246,.35); }
+    box-shadow: 0 6px 16px rgba(249,115,22,.35); }
   header .brandmark svg { width:20px; height:20px; }
   header h1 { font-size: 17px; margin: 0; letter-spacing: .4px; font-weight: 650; }
   .iconbtn { background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2);
@@ -145,7 +147,7 @@
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
   .chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; padding:4px 10px;
     border-radius:999px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2); cursor:pointer; }
-  .chip:hover { color:var(--ink); border-color: rgba(57,135,229,.55); }
+  .chip:hover { color:var(--ink); border-color: rgba(249,115,22,.55); }
   .hint { font-size:11px; color:var(--muted); margin-top:7px; }
   .hint code { background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--ink-2); }
   .smp { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
@@ -162,7 +164,7 @@
     cursor: pointer; border: none; border-radius: 8px; padding: 10px 15px;
     font-size: 14px; font-weight: 600; color: #fff; margin-top: 14px;
   }
-  button.start { background: var(--grad); box-shadow: 0 6px 18px rgba(59,130,246,.28); }
+  button.start { background: var(--grad); box-shadow: 0 6px 18px rgba(249,115,22,.28); }
   button.stop { background: var(--danger); }
   button.ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2); }
   button:hover { filter: brightness(1.1); }  button:disabled { opacity:.45; cursor:not-allowed; }
@@ -184,7 +186,7 @@
   .tile .u { font-size: 14px; color: var(--muted); font-weight: 500; margin-left: 4px; }
   .tile.hero .v { font-size: 46px; }
   [data-theme="dark"] .tile.hero { border-color: transparent;
-    box-shadow: 0 0 0 1px rgba(77,163,255,.35), 0 10px 34px rgba(59,130,246,.20); }
+    box-shadow: 0 0 0 1px rgba(251,146,60,.35), 0 10px 34px rgba(249,115,22,.18); }
   .tile.hero { border-color: rgba(57,135,229,.4); }
   .tile.small .v { font-size: 22px; }
   .tile .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
@@ -694,9 +696,10 @@ function renderChart(cfg){
   let rawMax=0;
   for(let i=0;i<samples.length;i++){ rawMax=Math.max(rawMax, roll?roll.hi[i]:samples[i][cfg.valKey]); }
   let ymax, steps=4;
-  if(cfg.integer){ const m=Math.max(1,Math.ceil(rawMax)); if(m<=5){ ymax=m; steps=m; } else { ymax=niceMax(m); } }
+  if(cfg.integer){ const m=Math.max(1,Math.ceil(rawMax)); if(m<=5){ ymax=m; steps=m; } else { ymax=niceMax(Math.ceil(m*1.15)); } }
   else { ymax = rawMax>0 ? niceMax(rawMax*1.15) : (cfg.floorMax||1); }
-  const yOf=v=> PAD.t + plotH - (v/ymax)*plotH;
+  // clamp to the plot rectangle so the line/dots can never render outside the y-scale
+  const yOf=v=> Math.max(PAD.t, Math.min(PAD.t+plotH, PAD.t + plotH - (v/ymax)*plotH));
 
   const frag=document.createDocumentFragment();
 
