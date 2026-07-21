@@ -13,7 +13,7 @@ import (
 	tsetcd "github.com/tsunami/etcd"
 	tshttp "github.com/tsunami/libs"
 	tsregistry "github.com/tsunami/registry"
-	clientv3 "go.etcd.io/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 //APIVersion version of APIs
@@ -167,6 +167,31 @@ func (oc *Ocean) NewEtcdClient() tsetcd.EtcdClient {
 	}
 }
 
+//DiscoverWorkers reads the worker registry from etcd and adds any workers not
+//already known to this ocean. Returns the number of newly added workers.
+//Existing workers (and their running jobs) are left untouched.
+func (oc *Ocean) DiscoverWorkers() (int, error) {
+	etcdClient := oc.NewEtcdClient()
+	list, err := etcdClient.GetRange(oc.viper.GetString("registry.client_config_key"))
+	if err != nil {
+		return 0, err
+	}
+
+	added := 0
+	for _, v := range list {
+		conf := tsregistry.Conf{}
+		if err := json.Unmarshal(v, &conf); err != nil {
+			continue
+		}
+		if conf.ID == "" || oc.workers[conf.ID] != nil {
+			continue
+		}
+		oc.workers[conf.ID] = oc.NewWorker(&conf)
+		added++
+	}
+	return added, nil
+}
+
 //NewWorker create a worker
 func (oc *Ocean) NewWorker(wrkConf *tsregistry.Conf) *Worker {
 
@@ -192,27 +217,9 @@ func main() {
 
 	log.Println("Master ID: ", ocs.viper.GetString("id"))
 
-	etcdClient := ocs.NewEtcdClient()
-
 	//Get list of woker from registry(Etcd)
-	wokerConfLists, err := etcdClient.GetRange(ocs.viper.GetString("client_config_key"))
-
-	if err != nil {
+	if _, err := ocs.DiscoverWorkers(); err != nil {
 		log.Fatalf("etcd connect failed: %v\n", err.Error())
-	}
-
-	for _, v := range wokerConfLists {
-
-		conf := tsregistry.Conf{}
-		err = json.Unmarshal(v, &conf)
-
-		if err != nil {
-			log.Fatalf(err.Error())
-		}
-
-		//log.Println("key: ", k, " value: ", conf)
-
-		ocs.workers[conf.ID] = ocs.NewWorker(&conf)
 	}
 
 	go func() {
@@ -228,6 +235,7 @@ func main() {
 	app.AddAPI(APIVersion+"/stop", ocs.Stop)
 	app.AddAPI(APIVersion+"/metrics", ocs.GetMetrics)
 	app.AddAPI(APIVersion+"/info", ocs.GetInfo)
+	app.AddAPI(APIVersion+"/workers/reload", ocs.ReloadWorkers)
 	app.Run()
 
 }

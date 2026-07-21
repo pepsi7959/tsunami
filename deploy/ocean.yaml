@@ -1,0 +1,11 @@
+name: master
+id: fed3f59d-9b32-4efe-a372-ca02d7ea9f66
+endpoints:
+  http: 0.0.0.0:8080
+
+registry:
+  request_timeout: 2
+  dial_timeout: 2
+  client_config_key: tsunami_config_client_
+  endpoints:
+    - etcd:2379

@@ -1,0 +1,17 @@
+name: worker-1
+id: 8cd50597-39df-473f-af2e-33e116f53101
+concurence: 300
+# mode "cluster" or "standalone"
+mode: cluster
+endpoints:
+  # the master reads this value from etcd and dials it directly,
+  # so it must be resolvable on the compose network (service name), not 127.0.0.1
+  grpc: tsunami:8050
+  http: 0.0.0.0:8090
+
+registry:
+  request_timeout: 2
+  dial_timeout: 2
+  client_config_key: tsunami_config_client_
+  endpoints:
+    - etcd:2379

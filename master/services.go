@@ -4,12 +4,47 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 
 	tsgrpc "github.com/tsunami/proto"
 
 	tshttp "github.com/tsunami/libs"
 )
+
+// topology graph exposed to the web control's visualizer
+type topoNode struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Kind     string `json:"kind"` // master | worker | target
+	IP       string `json:"ip"`
+	Endpoint string `json:"endpoint"`
+}
+
+type topoEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	Kind string `json:"kind"` // control | load
+	Job  string `json:"job,omitempty"`
+}
+
+type topoGraph struct {
+	Nodes []topoNode `json:"nodes"`
+	Edges []topoEdge `json:"edges"`
+}
+
+// resolveHost turns "host:port" (or "host") into a best-effort IP string.
+func resolveHost(endpoint string) string {
+	host := endpoint
+	if h, _, err := net.SplitHostPort(endpoint); err == nil {
+		host = h
+	}
+	if addrs, err := net.LookupHost(host); err == nil && len(addrs) > 0 {
+		return addrs[0]
+	}
+	return host
+}
 
 func metricxToSlice(m *tshttp.Metric) *map[string]string {
 	data := make(map[string]string)
@@ -144,6 +179,12 @@ func (oc *Ocean) JobMatching(job *Job) error {
 
 func (oc *Ocean) destroy(job *Job) error {
 
+	// Always drop the job + assignment records, even if scheduling failed and no
+	// workers were ever assigned — otherwise the job lingers in oc.jobs forever as
+	// an unstoppable "zombie" that clutters the test list and reports no metrics.
+	defer delete(oc.jobs, job.conf.Name)
+	defer delete(oc.jobToWorkers, job.conf.Name)
+
 	reqGRPC := tsgrpc.Request{
 		Command: tsgrpc.Request_STOP,
 		Params: &tsgrpc.Request_Params{
@@ -160,7 +201,7 @@ func (oc *Ocean) destroy(job *Job) error {
 	workers := oc.jobToWorkers[job.conf.Name]
 
 	if workers == nil {
-		return errors.New("Not found service : " + job.conf.Name)
+		return nil
 	}
 
 	for _, wrkInfo := range workers {
@@ -457,8 +498,74 @@ func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
 	data["max_concurrent"] = fmt.Sprintf("%d", maxConcurrent)
 	data["remaining_Concurrent"] = fmt.Sprintf("%d", remainingQouta)
 
+	// list of currently running tests (for the web control's "watching test" dropdown)
+	names := make([]string, 0, len(oc.jobs))
+	for n := range oc.jobs {
+		names = append(names, n)
+	}
+	data["jobs"] = strings.Join(names, ",")
+
+	// topology graph: ocean -> worker(s) -> target(s), for the visualizer
+	g := topoGraph{}
+	oceanIP := ""
+	if ip := tshttp.GetIP(); ip != nil {
+		oceanIP = ip.String()
+	}
+	g.Nodes = append(g.Nodes, topoNode{ID: "ocean", Name: "ocean", Kind: "master", IP: oceanIP, Endpoint: oc.viper.GetString("endpoints.http")})
+	for ID, worker := range oc.workers {
+		g.Nodes = append(g.Nodes, topoNode{ID: ID, Name: worker.name, Kind: "worker", IP: resolveHost(worker.endpoint), Endpoint: worker.endpoint})
+		g.Edges = append(g.Edges, topoEdge{From: "ocean", To: ID, Kind: "control"})
+	}
+	seenTarget := map[string]bool{}
+	for name, job := range oc.jobs {
+		url := job.conf.URL
+		if url == "" {
+			continue
+		}
+		tid := "target:" + url
+		if !seenTarget[tid] {
+			seenTarget[tid] = true
+			g.Nodes = append(g.Nodes, topoNode{ID: tid, Name: url, Kind: "target", Endpoint: url})
+		}
+		for _, wi := range oc.jobToWorkers[name] {
+			g.Edges = append(g.Edges, topoEdge{From: wi.worker.ID, To: tid, Kind: "load", Job: name})
+		}
+	}
+	if b, err := json.Marshal(g); err == nil {
+		data["topology"] = string(b)
+	}
+
 	tshttp.WriteSuccess(&w, &data, nil)
 
+}
+
+// ReloadWorkers re-reads the worker registry from etcd and picks up any newly
+// registered workers (used by the web control's Workers page "rediscover").
+func (oc *Ocean) ReloadWorkers(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", AllowOrigin)
+	}
+
+	added, err := oc.DiscoverWorkers()
+	if err != nil {
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: err.Error()})
+		return
+	}
+
+	data := map[string]string{
+		"added":   fmt.Sprintf("%d", added),
+		"workers": fmt.Sprintf("%d", len(oc.workers)),
+	}
+	tshttp.WriteSuccess(&w, &data, nil)
 }
 
 // Options support preflight

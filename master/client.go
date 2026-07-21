@@ -8,6 +8,7 @@ import (
 	tsgrpc "github.com/tsunami/proto"
 	"google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
@@ -100,7 +101,7 @@ func NewClient() *GRPCClient {
 
 //InitClient initlize client
 func (c *GRPCClient) InitClient(endpointServer string) {
-	opts := []grpc.DialOption{grpc.WithInsecure()}
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	conn, err := grpc.Dial(endpointServer, opts...)
 	if err != nil {
 		fmt.Println("InitClient error : ", err.Error())
