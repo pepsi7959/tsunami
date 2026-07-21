@@ -230,33 +230,38 @@ func (c *OceanClient) stopAll() {
 
 // serviceMetric snapshots a running service's live stats into a proto Metric.
 func serviceMetric(ts *Tsunami) *tsgrpc.Metric {
-	var avg, min, max float64
-	var numRes, numErr int
-	for _, w := range ts.workers {
-		numRes += w.GetNumRes()
-		numErr += w.GetNumErr()
-		avg += w.GetAvgRes()
-		if w.GetMaxRes() > max {
-			max = w.GetMaxRes()
+	var reqTotal, errTotal, resTotal, sumNanos int64
+	var min, max float64
+	// iterate by pointer so we read each worker's live stats (atomically) rather
+	// than a racy struct copy.
+	for i := range ts.workers {
+		w := &ts.workers[i]
+		reqTotal += int64(w.GetNumReq())
+		errTotal += int64(w.GetNumErr())
+		resTotal += int64(w.GetNumRes())
+		sumNanos += w.GetSumNanos()
+		if m := w.GetMaxRes(); m > max {
+			max = m
 		}
-		if min == 0.0 || w.GetMinRes() < min {
-			min = w.GetMinRes()
+		if mn := w.GetMinRes(); mn > 0 && (min == 0 || mn < min) {
+			min = mn
 		}
 	}
-	n := len(ts.workers)
-	if n > 0 {
-		avg = avg / float64(n)
+	// true request-weighted mean latency (ms) over successful responses
+	avg := 0.0
+	if resTotal > 0 {
+		avg = float64(sumNanos) / float64(resTotal) / 1e6
 	}
 	elapsed := time.Since(ts.start).Seconds()
 	rps := 0.0
 	if elapsed > 0 {
-		rps = float64(numRes) / elapsed
+		rps = float64(reqTotal) / elapsed
 	}
 	return &tsgrpc.Metric{
 		Job:          ts.conf.Name,
-		WorkerCount:  int32(n),
-		RequestCount: int64(numRes),
-		ErrorCount:   int64(numErr),
+		WorkerCount:  int32(len(ts.workers)),
+		RequestCount: reqTotal,
+		ErrorCount:   errTotal,
 		Avg:          avg,
 		Min:          min,
 		Max:          max,

@@ -181,16 +181,17 @@ func (ts *Tsunami) Monitoring(d time.Duration) {
 		workers = len(ts.workers)
 
 		if ts.enableReport == true {
-			for _, w := range ts.workers {
-				numRes += w.GetNumRes()
-				numErr += w.GetNumErr()
-				avg += w.GetAvgRes()
-				if w.GetMinRes() < min {
-					min = w.GetMinRes()
+			for i := range ts.workers {
+				wk := &ts.workers[i]
+				numRes += wk.GetNumRes()
+				numErr += wk.GetNumErr()
+				avg += wk.GetAvgRes()
+				if wk.GetMinRes() < min {
+					min = wk.GetMinRes()
 				}
 
-				if w.GetMaxRes() > max {
-					max = w.GetMaxRes()
+				if wk.GetMaxRes() > max {
+					max = wk.GetMaxRes()
 				}
 			}
 			avg = avg / float64(workers)

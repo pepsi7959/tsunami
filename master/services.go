@@ -275,7 +275,7 @@ func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agg := tshttp.Metric{Name: name}
-	var num int
+	var avgWeighted, weight float64
 	for id := range j.assignments {
 		wk := oc.workers[id]
 		if wk == nil {
@@ -285,25 +285,28 @@ func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		if m == nil {
 			continue
 		}
-		num++
 		agg.WorkerCount += int(m.GetWorkerCount())
 		agg.RequestCount += int(m.GetRequestCount())
 		agg.ErrorCount += int(m.GetErrorCount())
-		agg.Avg += m.GetAvg()
 		agg.Rps += m.GetRps()
 		if m.GetMax() > agg.Max {
 			agg.Max = m.GetMax()
 		}
-		if agg.Min == 0.0 || (m.GetMin() > 0 && m.GetMin() < agg.Min) {
+		if m.GetMin() > 0 && (agg.Min == 0.0 || m.GetMin() < agg.Min) {
 			agg.Min = m.GetMin()
 		}
 		if m.GetElapsedTime() > agg.ElapedTime {
 			agg.ElapedTime = m.GetElapsedTime()
 		}
+		// request-weighted mean latency; weight by successful responses (req-err)
+		if wgt := float64(m.GetRequestCount() - m.GetErrorCount()); wgt > 0 {
+			avgWeighted += m.GetAvg() * wgt
+			weight += wgt
+		}
 	}
 	oc.mu.Unlock()
-	if num > 0 {
-		agg.Avg = agg.Avg / float64(num)
+	if weight > 0 {
+		agg.Avg = avgWeighted / weight
 	}
 	tshttp.WriteSuccess(&w, metricxToSlice(&agg), nil)
 }

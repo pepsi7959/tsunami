@@ -19,17 +19,18 @@ func (ts *Tsunami) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	var numRes, numErr int
 	data := make(map[string]string)
 
-	for _, w := range ts.workers {
-		numRes += w.GetNumRes()
-		numErr += w.GetNumErr()
-		avg += w.GetAvgRes()
+	for i := range ts.workers {
+		wk := &ts.workers[i]
+		numRes += wk.GetNumRes()
+		numErr += wk.GetNumErr()
+		avg += wk.GetAvgRes()
 
-		if w.GetMaxRes() > max {
-			max = w.GetMaxRes()
+		if wk.GetMaxRes() > max {
+			max = wk.GetMaxRes()
 		}
 
-		if min == 0.0 || min > w.GetMinRes() {
-			min = w.GetMinRes()
+		if min == 0.0 || min > wk.GetMinRes() {
+			min = wk.GetMinRes()
 		}
 	}
 
