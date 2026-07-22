@@ -77,6 +77,12 @@
   .iconbtn { background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2);
     width:32px; height:32px; border-radius:8px; padding:0; margin:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
   .iconbtn svg { width:16px; height:16px; }
+  /* plain = borderless icon that blends with the flat controls beside it */
+  .iconbtn.plain { background:transparent; border-color:transparent; width:30px; height:30px; align-self:center; color:var(--muted); }
+  .iconbtn.plain:hover { background:var(--surface-2); color:var(--ink); filter:none; }
+  .iconbtn.plain svg { transition: transform .2s ease; }
+  .iconbtn.plain:hover svg { animation: ic-spin .6s ease; }
+  @keyframes ic-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
   #themeBtn .i-sun { display:none; } [data-theme="dark"] #themeBtn .i-sun { display:inline-flex; }
   #themeBtn .i-moon { display:inline-flex; } [data-theme="dark"] #themeBtn .i-moon { display:none; }
   /* empty state for the metrics zone */
@@ -331,7 +337,7 @@
       <div class="grow">Viewing: <b id="viewingName">— none —</b></div>
       <select id="mname" onchange="onWatchChange()" style="display:none"></select>
       <div class="spacer"></div>
-      <button class="iconbtn" title="Refresh now" onclick="loadInfo();loadMetrics();"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg></button>
+      <button class="iconbtn plain" title="Refresh now" onclick="loadInfo();loadMetrics();"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg></button>
       <label class="toggle"><input type="checkbox" id="autopoll" checked onchange="togglePoll()" /> auto-refresh (2s)</label>
       <label class="toggle"><input type="checkbox" id="tableview" onchange="toggleTable()" /> table view</label>
     </div>
