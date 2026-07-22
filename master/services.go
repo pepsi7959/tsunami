@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tshttp "github.com/tsunami/libs"
+	tsauth "github.com/tsunami/master/auth"
 	tsgrpc "github.com/tsunami/proto"
 )
 
@@ -178,6 +179,89 @@ func (oc *Ocean) Options(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Content-Length, X-Requested-With")
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// --- user auth (login / logout / session) ---
+
+type loginReq struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Provider string `json:"provider"` // "local" (default); "google" later
+}
+
+// Login authenticates via the selected provider and, on success, issues a
+// session and sets the httpOnly session cookie.
+func (oc *Ocean) Login(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req loginReq
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	provName := req.Provider
+	if provName == "" {
+		provName = "local"
+	}
+	p := oc.auth.Provider(provName)
+	if p == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 400, Message: "unknown auth provider"})
+		return
+	}
+	u, err := p.Authenticate(map[string]string{"username": req.Username, "password": req.Password})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 401, Message: "invalid username or password"})
+		return
+	}
+	raw, exp, err := oc.auth.Issue(u, r.RemoteAddr, r.UserAgent())
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not create session"})
+		return
+	}
+	http.SetCookie(w, oc.auth.Cookie(raw, exp))
+	data := map[string]string{"email": u.Email, "name": u.Name}
+	tshttp.WriteSuccess(&w, &data, nil)
+}
+
+// Logout revokes the current session and clears the cookie.
+func (oc *Ocean) Logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	if c, err := r.Cookie(oc.auth.CookieName()); err == nil {
+		oc.auth.Revoke(c.Value)
+	}
+	http.SetCookie(w, oc.auth.ClearCookie())
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// Session returns the authenticated user (the web control calls it on boot to
+// choose login-vs-app and to render the header username).
+func (oc *Ocean) Session(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	u := tsauth.UserFrom(r.Context())
+	if u == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 401, Message: "unauthorized"})
+		return
+	}
+	data := map[string]string{"email": u.Email, "name": u.Name}
+	tshttp.WriteSuccess(&w, &data, nil)
 }
 
 // Start splits a load test across attached workers (reject if capacity short).

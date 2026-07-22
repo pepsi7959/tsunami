@@ -8,11 +8,13 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	tsetcd "github.com/tsunami/etcd"
 	tshttp "github.com/tsunami/libs"
+	tsauth "github.com/tsunami/master/auth"
 	tsgrpc "github.com/tsunami/proto"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
@@ -59,6 +61,9 @@ type Ocean struct {
 	workers map[string]*attachedWorker
 	jobs    map[string]*job
 
+	// user login/logout for the HTTP API (SQLite-backed sessions)
+	auth *tsauth.Auth
+
 	// discovery (optional): register this ocean in etcd so workers can find it
 	discovery     bool
 	advertiseGRPC string // address workers should dial (published to etcd)
@@ -101,6 +106,16 @@ func readConf() *viper.Viper {
 	// shared token required from workers on the attach stream (empty = open)
 	v.SetDefault("auth.token", "")
 
+	// user login/logout for the HTTP API (separate from the worker attach token above)
+	v.SetDefault("auth.db_path", "/var/lib/tsunami/auth.db")
+	v.SetDefault("auth.session_ttl", 3600) // seconds; hard session lifetime
+	v.SetDefault("auth.cookie_secure", false)
+	v.SetDefault("auth.bootstrap_admin.username", "admin")
+	v.SetDefault("auth.bootstrap_admin.password", "admin")
+	// allow the admin password (and user) via env so prod doesn't write it to config
+	_ = v.BindEnv("auth.bootstrap_admin.username", "ADMIN_USER")
+	_ = v.BindEnv("auth.bootstrap_admin.password", "ADMIN_PASS")
+
 	if err := v.ReadInConfig(); err != nil {
 		panic(fmt.Errorf("fatal error config file: %s", err))
 	}
@@ -135,6 +150,21 @@ func New(conf *viper.Viper) *Ocean {
 		adv = ip + ":" + port
 	}
 	oc.advertiseGRPC = adv
+
+	// user auth: open the SQLite store, register providers, seed the admin
+	store, err := tsauth.Open(conf.GetString("auth.db_path"))
+	if err != nil {
+		log.Fatalf("auth: open db %s: %v", conf.GetString("auth.db_path"), err)
+	}
+	ttl := time.Duration(conf.GetInt("auth.session_ttl")) * time.Second
+	oc.auth = tsauth.New(store, ttl, conf.GetBool("auth.cookie_secure"))
+	if err := oc.auth.SeedAdmin(
+		conf.GetString("auth.bootstrap_admin.username"),
+		conf.GetString("auth.bootstrap_admin.password"),
+	); err != nil {
+		log.Fatalf("auth: seed admin: %v", err)
+	}
+
 	return oc
 }
 
@@ -176,6 +206,10 @@ func main() {
 	// client-facing HTTP API + web control
 	app := &tshttp.App{}
 	app.Init(oc.viper.GetString("endpoints.http"))
+	// auth (login is public; everything else is gated by the middleware below)
+	app.AddAPI(APIVersion+"/login", oc.Login)
+	app.AddAPI(APIVersion+"/logout", oc.Logout)
+	app.AddAPI(APIVersion+"/session", oc.Session)
 	app.AddAPI(APIVersion+"/start", oc.Start)
 	app.AddAPI(APIVersion+"/stop", oc.Stop)
 	app.AddAPI(APIVersion+"/pause", oc.Pause)
@@ -183,6 +217,7 @@ func main() {
 	app.AddAPI(APIVersion+"/metrics", oc.GetMetrics)
 	app.AddAPI(APIVersion+"/info", oc.GetInfo)
 	app.AddAPI(APIVersion+"/sample", oc.GetSample)
+	app.Use(oc.auth.Middleware) // gate all routes except /login (+ CORS/preflight)
 	log.Println("HTTP API:", oc.viper.GetString("endpoints.http"))
 	app.Run()
 }
