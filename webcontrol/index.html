@@ -21,35 +21,38 @@
     --grid:       #e5eaf0;
     --axis:       #cbd5e1;
     --border:     rgba(15,23,42,0.12);
-    --primary:    #ea580c;               /* actions / links (orange) */
+    --primary:    #0891b2;               /* actions / links (cyan) */
     --success:    #16a34a;               /* healthy / positive only */
     --warn:       #d97706;
     --danger:     #dc2626;               /* errors / destructive */
-    /* aliases kept so chart/topology JS (var(--s-blue) …) still resolves */
-    --s-blue:     var(--primary);
-    --s-aqua:     var(--success);
-    --s-crit:     var(--danger);
+    /* chart series — match the report (throughput/latency/error) */
+    --s-blue:     #0891b2;
+    --s-aqua:     #4f46e5;
+    --s-crit:     #e11d48;
     --good:       var(--success);
     --radius: 14px;
-    --grad: linear-gradient(135deg, #fbbf24 0%, #fb923c 46%, #f97316 100%);
+    --grad: linear-gradient(135deg, #5b83ec 0%, #3fb0c9 50%, #33c5a8 100%);   /* ocean: blue → cyan → teal */
     --sans: "Source Sans 3", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --display: "Lexend", var(--sans);
   }
   [data-theme="dark"] {
     color-scheme: dark;
-    --plane:      #0e0c0b;               /* warm charcoal */
-    --surface:    #17130f;
-    --surface-2:  #221c16;
-    --ink:        #f6f3ee;
-    --ink-2:      #c9c2b6;
-    --muted:      #948b7d;               /* ≥AA on warm charcoal */
-    --grid:       #221c16;
-    --axis:       #33291f;
+    --plane:      #080d14;               /* deep ocean navy */
+    --surface:    #0f1826;
+    --surface-2:  #16223a;
+    --ink:        #e8eef6;
+    --ink-2:      #c6d3e2;
+    --muted:      #8ba0b8;               /* ≥AA on navy */
+    --grid:       #1b283c;
+    --axis:       #223247;
     --border:     rgba(255,255,255,0.09);
-    --primary:    #fb923c;               /* orange (text/links/borders) */
-    --success:    #34d399;               /* green */
-    --warn:       #f59e0b;
-    --danger:     #f87171;
+    --primary:    #2ee6ff;               /* cyan (text/links/borders) */
+    --success:    #22d3a7;               /* teal-green */
+    --warn:       #f5a524;
+    --danger:     #ff6b81;
+    --s-blue:     #2ee6ff;               /* throughput */
+    --s-aqua:     #7c9cff;               /* latency */
+    --s-crit:     #ff6b81;               /* error */
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: var(--sans); background: var(--plane); color: var(--ink); }
@@ -57,8 +60,8 @@
   /* soft warm top glow, dark theme only */
   [data-theme="dark"] body {
     background:
-      radial-gradient(1100px 560px at 50% -8%, rgba(249,115,22,.13), transparent 62%),
-      radial-gradient(900px 500px at 88% 4%, rgba(251,146,60,.07), transparent 60%),
+      radial-gradient(1100px 560px at 50% -8%, rgba(14,165,233,.13), transparent 62%),
+      radial-gradient(900px 500px at 88% 4%, rgba(14,165,233,.07), transparent 60%),
       var(--plane);
     background-attachment: fixed;
   }
@@ -71,7 +74,7 @@
   }
   header .brandmark { display:inline-flex; align-items:center; justify-content:center;
     width:36px; height:36px; border-radius:11px; background:var(--grad); color:#fff;
-    box-shadow: 0 6px 16px rgba(249,115,22,.35); }
+    box-shadow: 0 6px 16px rgba(14,165,233,.35); }
   header .brandmark svg { width:20px; height:20px; }
   header h1 { font-size: 17px; margin: 0; letter-spacing: .4px; font-weight: 650; }
   .iconbtn { background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2);
@@ -129,8 +132,8 @@
   .conn { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border);
     border-radius:10px; background:var(--surface-2); margin-bottom:10px; position:relative; }
   /* active (watched) row: brand-gradient left bar + faint wash + on-theme border */
-  .conn.active { border-color: rgba(249,115,22,.45);
-    background: linear-gradient(90deg, rgba(249,115,22,.12), transparent 42%), var(--surface-2); }
+  .conn.active { border-color: rgba(14,165,233,.45);
+    background: linear-gradient(90deg, rgba(14,165,233,.12), transparent 42%), var(--surface-2); }
   .conn.active::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px;
     border-radius:10px 0 0 10px; background:var(--grad); }
   .conn .meta { flex:1; min-width:0; }
@@ -157,7 +160,7 @@
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
   .chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11px; padding:4px 10px;
     border-radius:999px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-2); cursor:pointer; }
-  .chip:hover { color:var(--ink); border-color: rgba(249,115,22,.55); }
+  .chip:hover { color:var(--ink); border-color: rgba(14,165,233,.55); }
   .hint { font-size:11px; color:var(--muted); margin-top:7px; }
   .hint code { background:var(--surface-2); padding:1px 5px; border-radius:4px; color:var(--ink-2); }
   .smp { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
@@ -176,10 +179,10 @@
     display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   }
   button svg { width: 15px; height: 15px; flex: none; }
-  button.start { background: var(--grad); box-shadow: 0 6px 18px rgba(249,115,22,.28); }
+  button.start { background: var(--grad); box-shadow: 0 6px 18px rgba(14,165,233,.28); }
   /* tonal = the row's primary control (Pause): soft accent, clearly leads without shouting */
-  button.tonal { background: rgba(249,115,22,.14); color: var(--primary); border: 1px solid rgba(249,115,22,.32); }
-  button.tonal:hover { background: rgba(249,115,22,.22); filter: none; }
+  button.tonal { background: rgba(14,165,233,.14); color: var(--primary); border: 1px solid rgba(14,165,233,.32); }
+  button.tonal:hover { background: rgba(14,165,233,.22); filter: none; }
   button.ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2); }
   /* destructive = outlined until hover, so Stop doesn't dominate a routine list */
   button.stop { background: transparent; border: 1px solid rgba(239,68,68,.55); color: var(--danger); }
@@ -206,7 +209,7 @@
   .tile .u { font-size: 14px; color: var(--muted); font-weight: 500; margin-left: 4px; }
   .tile.hero .v { font-size: 46px; }
   [data-theme="dark"] .tile.hero { border-color: transparent;
-    box-shadow: 0 0 0 1px rgba(251,146,60,.35), 0 10px 34px rgba(249,115,22,.18); }
+    box-shadow: 0 0 0 1px rgba(14,165,233,.35), 0 10px 34px rgba(14,165,233,.18); }
   .tile.hero { border-color: rgba(57,135,229,.4); }
   .tile.small .v { font-size: 22px; }
   .tile .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
@@ -359,7 +362,7 @@
     <div class="legend">
       <span class="li"><span class="sw" style="background:var(--s-blue)"></span>ocean (master)</span>
       <span class="li"><span class="sw" style="background:var(--s-aqua)"></span>worker</span>
-      <span class="li"><span class="sw" style="background:#d95926"></span>target</span>
+      <span class="li"><span class="sw" style="background:#ff8a5b"></span>target</span>
       <span class="li"><span class="sw" style="background:var(--muted)"></span>control link (gRPC)</span>
       <span class="li"><span class="sw" style="background:var(--s-blue)"></span>load flow (→ target)</span>
     </div>
@@ -849,7 +852,7 @@ function repChart(pts, key, color, yFmt, floor, band){
   const yOf=v=> Math.max(T, Math.min(T+plotH, T+plotH-(v/ymax)*plotH));
   let g='';
   for(let i=0;i<=4;i++){ const v=ymax*i/4, y=yOf(v).toFixed(1);
-    g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#1b283c" stroke-width="1"/>`;
+    g+=`<line class="rc-grid" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke-width="1"/>`;
     g+=`<text x="${L-9}" y="${(+y+3.5).toFixed(1)}" text-anchor="end" class="rc-ax">${yFmt(v)}</text>`;
   }
   const span=x1-x0, xd=span>=20?0:span>=4?1:2;
@@ -859,17 +862,18 @@ function repChart(pts, key, color, yFmt, floor, band){
   if(band){ let up='',dn='';
     pts.forEach((p,i)=>{ up+=(i?'L':'M')+xOf(p.t).toFixed(1)+' '+yOf(hi[i]).toFixed(1)+' '; });
     for(let i=pts.length-1;i>=0;i--){ dn+='L'+xOf(pts[i].t).toFixed(1)+' '+yOf(lo[i]).toFixed(1)+' '; }
-    bandPath=`<path d="${up+dn}Z" fill="${color}" fill-opacity="0.12" stroke="none"/>`;
+    bandPath=`<path d="${up+dn}Z" fill="currentColor" fill-opacity="0.12" stroke="none"/>`;
   }
   let line=''; pts.forEach((p,i)=>{ line+=(i?'L':'M')+xOf(p.t).toFixed(1)+' '+yOf(p[key]).toFixed(1)+' '; });
   const area=line+`L${xOf(x1).toFixed(1)} ${yOf(0).toFixed(1)} L${xOf(x0).toFixed(1)} ${yOf(0).toFixed(1)} Z`;
   const last=pts[pts.length-1], gid='rg_'+key;
-  return `<svg viewBox="0 0 ${W} ${H}" class="rc-svg" role="img" aria-label="time series chart">
+  // color is a CSS var (e.g. var(--c-rps)); currentColor + var-driven classes let the in-report toggle repaint everything
+  return `<svg viewBox="0 0 ${W} ${H}" class="rc-svg" role="img" aria-label="time series chart" style="color:${color}">
   <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0%" stop-color="${color}" stop-opacity="0.24"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+  <stop offset="0%" stop-color="currentColor" stop-opacity="0.24"/><stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>
   ${g}${band?bandPath:`<path d="${area}" fill="url(#${gid})"/>`}
-  <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-  <circle cx="${xOf(last.t).toFixed(1)}" cy="${yOf(last[key]).toFixed(1)}" r="4" fill="${color}" stroke="#0a0f16" stroke-width="2"/></svg>`;
+  <path d="${line}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle class="rc-dot" cx="${xOf(last.t).toFixed(1)}" cy="${yOf(last[key]).toFixed(1)}" r="4" fill="currentColor" stroke-width="2"/></svg>`;
 }
 
 // static, string-only topology diagram (ocean -> worker -> target), mirrors renderTopo layout
@@ -883,23 +887,24 @@ function repTopo(g){
   place(nodes.filter(n=>n.kind==='master'),cx.master);
   place(nodes.filter(n=>n.kind==='worker'),cx.worker);
   place(nodes.filter(n=>n.kind==='target'),cx.target);
-  const col={master:'#2ee6ff', worker:'#22d3a7', target:'#ff8a5b'};
+  const col={master:'var(--c-ocean)', worker:'var(--c-worker)', target:'var(--c-target)'};
   const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   let s='';
   edges.forEach(e=>{ const a=pos[e.from], b=pos[e.to]; if(!a||!b) return;
     const dx=(b.x-a.x)*0.45, load=e.kind==='load';
-    s+=`<path d="M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}" fill="none" stroke="${load?'rgba(46,230,255,.45)':'#33465e'}" stroke-width="${load?2.5:1.5}"${load?'':' stroke-dasharray="4 6"'}/>`;
+    s+=`<path d="M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}" fill="none" style="stroke:${load?'var(--cyan)':'var(--rc-grid)'}"${load?' stroke-opacity="0.5"':''} stroke-width="${load?2.5:1.5}"${load?'':' stroke-dasharray="4 6"'}/>`;
   });
   nodes.forEach(n=>{ const p=pos[n.id]; if(!p) return;
-    const r=n.kind==='master'?30:n.kind==='worker'?26:24, c=col[n.kind]||'#2ee6ff';
+    const r=n.kind==='master'?30:n.kind==='worker'?26:24, c=col[n.kind]||'var(--c-ocean)';
     const label=n.kind==='master'?'OC':n.kind==='worker'?'WK':'TG';
     const nm=n.kind==='target'?shortUrl(n.name):n.name;
     let ip=n.ip||''; if(n.kind==='target'&&!ip){ let host=n.name; try{ host=new URL(n.name).hostname; }catch(_){} ip=dohCache[host]||''; }
-    s+=`<circle cx="${p.x}" cy="${p.y}" r="${r+7}" fill="${c}" fill-opacity="0.12"/>`;
-    s+=`<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="#0c1420" stroke="${c}" stroke-width="2.5"/>`;
-    s+=`<text x="${p.x}" y="${p.y+4}" text-anchor="middle" font-size="13" font-weight="700" fill="${c}">${label}</text>`;
-    s+=`<text x="${p.x}" y="${p.y+r+20}" text-anchor="middle" font-size="13" font-weight="600" fill="#e8eef6">${esc(nm)}</text>`;
-    s+=`<text x="${p.x}" y="${p.y+r+37}" text-anchor="middle" font-size="11" fill="#8ba0b8">${esc(ip||'—')}</text>`;
+    s+=`<g style="color:${c}">`;
+    s+=`<circle cx="${p.x}" cy="${p.y}" r="${r+7}" fill="currentColor" fill-opacity="0.12"/>`;
+    s+=`<circle class="topo-surface" cx="${p.x}" cy="${p.y}" r="${r}" stroke="currentColor" stroke-width="2.5"/>`;
+    s+=`<text x="${p.x}" y="${p.y+4}" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">${label}</text></g>`;
+    s+=`<text class="topo-name" x="${p.x}" y="${p.y+r+20}" text-anchor="middle" font-size="13" font-weight="600">${esc(nm)}</text>`;
+    s+=`<text class="topo-ip" x="${p.x}" y="${p.y+r+37}" text-anchor="middle" font-size="11">${esc(ip||'—')}</text>`;
   });
   return `<svg viewBox="0 0 ${TW} ${TH}" class="rc-svg" role="img" aria-label="cluster topology: ocean to worker to target">${s}</svg>`;
 }
@@ -957,6 +962,7 @@ async function generateReport(name){
 
   const gen=new Date();
   const genStr=gen.toLocaleString();
+  const dark = document.documentElement.getAttribute('data-theme')!=='light';   // report opens in the app's theme; toggle below lets the reader flip it
   const kpi=(label,val,unit)=>`<div class="kpi"><div class="kl">${label}</div><div class="kv">${val}${unit?`<span class="ku">${unit}</span>`:''}</div></div>`;
   const row=(k,v)=>`<tr><th>${k}</th><td>${v}</td></tr>`;
   const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -971,18 +977,33 @@ async function generateReport(name){
    <pre>${sample.error?esc(sample.error):esc(sample.responseBody||'(empty body)')}</pre></div>
  </div></div>` : '';
 
-  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8">
+  const html=`<!doctype html><html lang="en" data-theme="${dark?'dark':'light'}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tsunami report — ${esc(name)}</title>
 <style>
- :root{ --bg:#080d14; --panel:#0f1826; --panel2:#0c1420; --border:#1b283c; --ink:#e8eef6; --muted:#8ba0b8;
-   --cyan:#2ee6ff; --cyan2:#0891b2; --pass:#22d3a7; --warn:#f5a524; --fail:#ff5c72;
-   --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+ :root{ --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
    --mono:ui-monospace,'SF Mono','JetBrains Mono','Fira Code',Menlo,Consolas,monospace; }
+ html[data-theme="dark"]{ --bg:#080d14; --panel:#0f1826; --panel2:#0c1420; --border:#1b283c; --ink:#e8eef6; --muted:#8ba0b8;
+   --cyan:#2ee6ff; --cyan2:#0891b2; --pass:#22d3a7; --warn:#f5a524; --fail:#ff5c72;
+   --rc-grid:#1b283c; --rc-ax:#6f8299; --rc-surface:#0a0f16; --glow:rgba(46,230,255,.10); --code:#c6d3e2;
+   --c-rps:#2ee6ff; --c-lat:#7c9cff; --c-rate:#ff6b81; --c-err:#ff8a8a;
+   --c-ocean:#2ee6ff; --c-worker:#22d3a7; --c-target:#ff8a5b; }
+ html[data-theme="light"]{ --bg:#f6f8fb; --panel:#ffffff; --panel2:#f4f7fb; --border:#e2e8f0; --ink:#0f172a; --muted:#5b6b7f;
+   --cyan:#0891b2; --cyan2:#0e7490; --pass:#059669; --warn:#d97706; --fail:#dc2626;
+   --rc-grid:#e6ebf2; --rc-ax:#64748b; --rc-surface:#ffffff; --glow:rgba(8,145,178,.05); --code:#334155;
+   --c-rps:#0891b2; --c-lat:#4f46e5; --c-rate:#e11d48; --c-err:#f43f5e;
+   --c-ocean:#0891b2; --c-worker:#0d9488; --c-target:#ea580c; }
  *{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;
-   background-image:radial-gradient(900px 500px at 80% -10%, rgba(46,230,255,.10), transparent 60%);}
+   background-image:radial-gradient(900px 500px at 80% -10%, var(--glow), transparent 60%);}
  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 64px}
+ .hright{display:flex;align-items:flex-start;gap:14px}
+ .rtoggle{flex:none;width:34px;height:34px;border-radius:9px;background:var(--panel);
+   border:1px solid var(--border);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+ .rtoggle:hover{color:var(--cyan)}
+ .rtoggle svg{width:17px;height:17px}
+ .rtoggle:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+ html[data-theme="dark"] .rtoggle .i-moon{display:none} html[data-theme="light"] .rtoggle .i-sun{display:none}
  header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;
    padding-bottom:24px;border-bottom:1px solid var(--border);margin-bottom:28px}
  .brand{display:flex;align-items:center;gap:12px}
@@ -1011,7 +1032,11 @@ async function generateReport(name){
  .card .ct{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;margin-bottom:6px}
  .dot{width:9px;height:9px;border-radius:3px;flex:none}
  .rc-svg{width:100%;height:auto;display:block}
- .rc-ax{fill:#6f8299;font-family:var(--mono);font-size:11px}
+ .rc-ax{fill:var(--rc-ax);font-family:var(--mono);font-size:11px}
+ .rc-grid{stroke:var(--rc-grid)}
+ .rc-dot{stroke:var(--rc-surface)}
+ .topo-surface{fill:var(--rc-surface)}
+ .topo-name{fill:var(--ink)} .topo-ip{fill:var(--muted)}
  .rc-empty{color:var(--muted);padding:40px;text-align:center;font-size:13px}
  .topolegend{display:flex;gap:22px;justify-content:center;margin-top:8px;color:var(--muted);font-size:12.5px;flex-wrap:wrap}
  .topolegend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;vertical-align:middle}
@@ -1020,7 +1045,7 @@ async function generateReport(name){
  .rq-h{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin-bottom:6px;font-family:var(--mono)}
  .rq-line{font-family:var(--mono);font-size:12px;color:var(--cyan);word-break:break-all;margin-bottom:8px}
  .card pre{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:var(--mono);
-   font-size:11px;color:#c6d3e2;overflow:auto;max-height:280px;white-space:pre-wrap;word-break:break-all;margin:0 0 8px}
+   font-size:11px;color:var(--code);overflow:auto;max-height:280px;white-space:pre-wrap;word-break:break-all;margin:0 0 8px}
  table{width:100%;border-collapse:collapse;font-size:13.5px}
  th,td{text-align:left;padding:11px 4px;border-bottom:1px solid var(--border);vertical-align:top}
  th{color:var(--muted);font-weight:500;width:34%}
@@ -1032,10 +1057,16 @@ async function generateReport(name){
 </style></head><body><div class="wrap">
  <header>
   <div class="brand">
-   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M1 15c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2c1.1 0 1.65-.5 2.2-1" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 19c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2c1.1 0 1.65-.5 2.2-1" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/><path d="M8 9l4-6 4 6" stroke="#2ee6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/></svg>
+   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:var(--cyan)"><path d="M1 15c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2c1.1 0 1.65-.5 2.2-1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 19c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2c1.1 0 1.65-.5 2.2-1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/><path d="M8 9l4-6 4 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/></svg>
    <div><div class="t"><b>tsunami</b> load report</div><div class="sub">generated ${esc(genStr)}</div></div>
   </div>
-  <div class="meta"><div class="tn">${esc(name)}</div><div>target · ${esc(target)}</div></div>
+  <div class="hright">
+   <div class="meta"><div class="tn">${esc(name)}</div><div>target · ${esc(target)}</div></div>
+   <button id="rtoggle" class="rtoggle" type="button" aria-label="Toggle light or dark theme" title="Toggle theme">
+    <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+   </button>
+  </div>
  </header>
 
  <div class="verdict ${verdict.cls}">
@@ -1045,7 +1076,7 @@ async function generateReport(name){
 ${ (topo.nodes&&topo.nodes.length) ? `
  <h2>Topology</h2>
  <div class="card">${repTopo(topo)}
-  <div class="topolegend"><span><i style="background:#2ee6ff"></i>ocean</span><span><i style="background:#22d3a7"></i>worker</span><span><i style="background:#ff8a5b"></i>target</span></div>
+  <div class="topolegend"><span><i style="background:var(--c-ocean)"></i>ocean</span><span><i style="background:var(--c-worker)"></i>worker</span><span><i style="background:var(--c-target)"></i>target</span></div>
  </div>` : '' }
 
  <h2>Summary</h2>
@@ -1062,20 +1093,20 @@ ${ (topo.nodes&&topo.nodes.length) ? `
 
 ${ hasSeries ? `
  <h2>Throughput over time</h2>
- <div class="card"><div class="ct"><span class="dot" style="background:#2ee6ff"></span>Requests / second</div>
-  ${repChart(pts,'rps','#2ee6ff',fmtInt,1)}</div>
+ <div class="card"><div class="ct"><span class="dot" style="background:var(--c-rps)"></span>Requests / second</div>
+  ${repChart(pts,'rps','var(--c-rps)',fmtInt,1)}</div>
 
  <h2>Latency over time</h2>
- <div class="card"><div class="ct"><span class="dot" style="background:#7c9cff"></span>Average latency (ms) · band = recent range</div>
-  ${repChart(pts,'avg','#7c9cff',v=>(v>=100?String(Math.round(v)):v.toFixed(1)),1,true)}</div>
+ <div class="card"><div class="ct"><span class="dot" style="background:var(--c-lat)"></span>Average latency (ms) · band = recent range</div>
+  ${repChart(pts,'avg','var(--c-lat)',v=>(v>=100?String(Math.round(v)):v.toFixed(1)),1,true)}</div>
 
  <h2>Error rate over time</h2>
- <div class="card"><div class="ct"><span class="dot" style="background:#ff6b81"></span>Errors as % of requests</div>
-  ${repChart(pts,'rate','#ff6b81',v=>(v>=10?String(Math.round(v)):v.toFixed(1))+'%',1)}</div>
+ <div class="card"><div class="ct"><span class="dot" style="background:var(--c-rate)"></span>Errors as % of requests</div>
+  ${repChart(pts,'rate','var(--c-rate)',v=>(v>=10?String(Math.round(v)):v.toFixed(1))+'%',1)}</div>
 
  <h2>Errors over time</h2>
- <div class="card"><div class="ct"><span class="dot" style="background:#ff8a8a"></span>Cumulative failures · count</div>
-  ${repChart(pts,'err','#ff8a8a',fmtInt,1)}</div>
+ <div class="card"><div class="ct"><span class="dot" style="background:var(--c-err)"></span>Cumulative failures · count</div>
+  ${repChart(pts,'err','var(--c-err)',fmtInt,1)}</div>
 ` : `
  <h2>Timeline</h2>
  <div class="card"><div class="rc-empty">This is a snapshot report — the KPIs above are live totals for “${esc(name)}”.<br>Click <b>Watch</b> on this test to record the throughput / latency / error timeline, then generate again.</div></div>
@@ -1095,7 +1126,9 @@ ${sampleSection}
   <span>Generated by Tsunami · distributed load testing</span>
   <span>${esc(genStr)}</span>
  </footer>
-</div></body></html>`;
+</div>
+<script>document.getElementById('rtoggle').addEventListener('click',function(){var r=document.documentElement;r.setAttribute('data-theme',r.getAttribute('data-theme')==='light'?'dark':'light');});<\/script>
+</body></html>`;
 
   const stamp=`${gen.getFullYear()}${String(gen.getMonth()+1).padStart(2,'0')}${String(gen.getDate()).padStart(2,'0')}-${String(gen.getHours()).padStart(2,'0')}${String(gen.getMinutes()).padStart(2,'0')}`;
   const safe=name.replace(/[^a-z0-9._-]+/gi,'_');
@@ -1135,7 +1168,7 @@ let topoRAF=null, topoLastTs=0;
 const dohCache={};
 
 function shortUrl(u){ try{ const x=new URL(u); return x.hostname+(x.pathname!=='/'?x.pathname:''); }catch(e){ return u; } }
-function topoColor(k){ return k==='master'?'var(--s-blue)': k==='worker'?'var(--s-aqua)':'#d95926'; }
+function topoColor(k){ return k==='master'?'var(--s-blue)': k==='worker'?'var(--s-aqua)':'#ff8a5b'; }
 
 async function resolveTargetIP(url, labelEl){
   let host=url; try{ host=new URL(url).hostname; }catch(e){}
