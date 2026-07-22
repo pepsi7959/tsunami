@@ -330,6 +330,23 @@
     </div>
   </div>
 
+  <!-- live topology — always visible (cluster overview, even with no test running) -->
+  <div class="card">
+    <div class="chart-head"><span class="title">Live topology</span><span class="cap">ocean → worker → target · animated flow ∝ throughput</span></div>
+    <div class="chart-wrap">
+      <svg class="topo" id="topo"></svg>
+      <div class="tt" id="tt_topo"></div>
+      <div class="empty" id="e_topo">connecting…</div>
+    </div>
+    <div class="legend">
+      <span class="li"><span class="sw" style="background:var(--s-blue)"></span>ocean (master)</span>
+      <span class="li"><span class="sw" style="background:var(--s-aqua)"></span>worker</span>
+      <span class="li"><span class="sw" style="background:#d95926"></span>target</span>
+      <span class="li"><span class="sw" style="background:var(--muted)"></span>control link (gRPC)</span>
+      <span class="li"><span class="sw" style="background:var(--s-blue)"></span>load flow (→ target)</span>
+    </div>
+  </div>
+
   <!-- shown until a test is being watched -->
   <div class="card metrics-empty" id="emptyState">
     <div class="me-title">No test selected</div>
@@ -350,23 +367,6 @@
     <div class="tile small"><div class="k">Max latency</div><div class="v" id="m_max">—<span class="u">ms</span></div></div>
     <div class="tile small"><div class="k">Workers</div><div class="v" id="m_wrk">—</div></div>
     <div class="tile small"><div class="k">Elapsed</div><div class="v" id="m_el">—<span class="u">s</span></div></div>
-  </div>
-
-  <!-- live topology -->
-  <div class="card">
-    <div class="chart-head"><span class="title">Live topology</span><span class="cap">ocean → worker → target · animated flow ∝ throughput</span></div>
-    <div class="chart-wrap">
-      <svg class="topo" id="topo"></svg>
-      <div class="tt" id="tt_topo"></div>
-      <div class="empty" id="e_topo">connecting…</div>
-    </div>
-    <div class="legend">
-      <span class="li"><span class="sw" style="background:var(--s-blue)"></span>ocean (master)</span>
-      <span class="li"><span class="sw" style="background:var(--s-aqua)"></span>worker</span>
-      <span class="li"><span class="sw" style="background:#d95926"></span>target</span>
-      <span class="li"><span class="sw" style="background:var(--muted)"></span>control link (gRPC)</span>
-      <span class="li"><span class="sw" style="background:var(--s-blue)"></span>load flow (→ target)</span>
-    </div>
   </div>
 
   <!-- charts -->
