@@ -44,6 +44,7 @@ type job struct {
 	name        string
 	conf        tshttp.Conf
 	assignments map[string]int // workerID -> concurrency
+	paused      bool           // traffic halted but capacity still reserved
 }
 
 // Ocean is the job distributor: it accepts client requests over HTTP and drives
@@ -177,6 +178,8 @@ func main() {
 	app.Init(oc.viper.GetString("endpoints.http"))
 	app.AddAPI(APIVersion+"/start", oc.Start)
 	app.AddAPI(APIVersion+"/stop", oc.Stop)
+	app.AddAPI(APIVersion+"/pause", oc.Pause)
+	app.AddAPI(APIVersion+"/resume", oc.Resume)
 	app.AddAPI(APIVersion+"/metrics", oc.GetMetrics)
 	app.AddAPI(APIVersion+"/info", oc.GetInfo)
 	app.AddAPI(APIVersion+"/sample", oc.GetSample)
