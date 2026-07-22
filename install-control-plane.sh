@@ -169,7 +169,9 @@ nginx -t >/dev/null 2>&1 && systemctl restart nginx || true
 
 sleep 3
 log "services: $(systemctl is-active etcd ocean nginx 2>/dev/null | tr '\n' ' ' || true)"
-if curl -fsS -X POST http://127.0.0.1:8080/api/v1/info -d '{"cmd":"info","conf":{}}' >/dev/null 2>&1; then
+# health check: hit an UNGATED endpoint (/help). The API (/api/v1/*) now requires
+# login, so probing it would return 401 and look like a failure even when ocean is up.
+if curl -fsS http://127.0.0.1:8080/help >/dev/null 2>&1; then
   log "ocean API responding"
 else
   err "ocean not responding yet — check: journalctl -u ocean -n 50 --no-pager"
