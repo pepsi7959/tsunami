@@ -264,6 +264,99 @@ func (oc *Ocean) Session(w http.ResponseWriter, r *http.Request) {
 	tshttp.WriteSuccess(&w, &data, nil)
 }
 
+// --- saved tests (bookmarks) ---
+
+// GetBookmarks returns all saved tests as a JSON string in data.bookmarks
+// (same envelope pattern as GetInfo/GetSample).
+func (oc *Ocean) GetBookmarks(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	list, err := oc.auth.Store().ListBookmarks()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not read bookmarks"})
+		return
+	}
+	b, _ := json.Marshal(list)
+	data := map[string]string{"bookmarks": string(b)}
+	tshttp.WriteSuccess(&w, &data, nil)
+}
+
+// SaveBookmark upserts a saved test. Favoriting a running test sends only the
+// name — the live job config is pulled from memory; editing sends the full conf.
+func (oc *Ocean) SaveBookmark(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	c := req.Conf
+	if c.Name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 400, Message: "name is required"})
+		return
+	}
+	// favorite-from-running: only a name is given → fill from the live job config
+	if c.URL == "" {
+		oc.mu.Lock()
+		if j := oc.jobs[c.Name]; j != nil {
+			c.URL = j.conf.URL
+			c.Method = j.conf.Method
+			c.Concurrence = j.conf.Concurrence
+			c.Body = j.conf.Body
+			c.Headers = j.conf.Headers
+			c.Verbose = j.conf.Verbose
+		}
+		oc.mu.Unlock()
+	}
+	bm := &tsauth.Bookmark{
+		Name: c.Name, URL: c.URL, Method: c.Method, Concurrence: c.Concurrence,
+		Body: c.Body, Headers: c.Headers, Verbose: c.Verbose,
+	}
+	if err := oc.auth.Store().SaveBookmark(bm); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not save bookmark"})
+		return
+	}
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// DeleteBookmark removes a saved test (toggle-off favorite).
+func (oc *Ocean) DeleteBookmark(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	if req.Conf.Name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 400, Message: "name is required"})
+		return
+	}
+	if err := oc.auth.Store().DeleteBookmark(req.Conf.Name); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not delete bookmark"})
+		return
+	}
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
 // Start splits a load test across attached workers (reject if capacity short).
 func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
@@ -622,6 +715,12 @@ func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
 			g.Nodes = append(g.Nodes, topoNode{ID: "master:" + o.ID, Name: o.Name, Kind: "master", IP: o.GRPC, Endpoint: o.HTTP})
 		}
 		for _, fj := range oc.allFleetJobs() {
+			// this ocean's own jobs are already in `names` from oc.jobs (authoritative +
+			// current); skip its fleet entry, which is only published periodically and is
+			// stale right after a stop (otherwise a stopped job lingers until the next publish).
+			if fj.Ocean == oc.id {
+				continue
+			}
 			found := false
 			for _, n := range names {
 				if n == fj.Name {
