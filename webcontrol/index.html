@@ -520,7 +520,8 @@ async function loadInfo(quiet){
     let topo=null;
     if(d.topology){ try{ topo=JSON.parse(d.topology); renderTopo(topo); }catch(err){} }
     const names=(d.jobs||'').split(',').map(s=>s.trim()).filter(Boolean);
-    renderRunning(names, topo);
+    const paused=new Set((d.paused_jobs||'').split(',').map(s=>s.trim()).filter(Boolean));
+    renderRunning(names, topo, paused);
     if(!quiet) logline('info ok', d);
   }catch(e){ setConn(false); if(!quiet) logline('info failed: '+e.message); }
 }
@@ -539,7 +540,7 @@ function onWatchChange(){ $('viewingName').textContent = $('mname').value || '�
 
 /* ---------- running tests list (manage + select) ---------- */
 function cssId(s){ return 'rt_'+String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
-function renderRunning(names, topo){
+function renderRunning(names, topo, paused){
   $('rt_count').textContent = names.length;
   const list=$('runningList');
   if(!names.length){ list.innerHTML='<div class="page-sub">No running tests — start one on the left.</div>'; return; }
@@ -550,18 +551,22 @@ function renderRunning(names, topo){
   list.innerHTML='';
   names.forEach(name=>{
     const viewing = name===watched;
+    const isPaused = !!(paused && paused.has(name));
     const row=document.createElement('div'); row.className='conn'+(viewing?' active':''); row.id=cssId(name);
     const meta=document.createElement('div'); meta.className='meta';
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=name;
-    const u=document.createElement('div'); u.className='u'; u.textContent=(tgt[name]||'—')+' · loading…';
+    const u=document.createElement('div'); u.className='u'; u.textContent=(tgt[name]||'—')+(isPaused?' · paused':' · loading…');
     meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
     const mk=(t,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.textContent=t; b.onclick=fn; return b; };
+    if(isPaused){ const bd=document.createElement('span'); bd.className='badge off'; bd.textContent='paused'; row.appendChild(bd); }
     if(viewing){ const bd=document.createElement('span'); bd.className='badge on'; bd.textContent='viewing'; row.appendChild(bd); }
     else row.appendChild(mk('Watch','ghost',()=>watchTest(name)));
+    if(isPaused) row.appendChild(mk('▶ Continue','start',()=>resumeTest(name)));
+    else row.appendChild(mk('⏸ Pause','ghost',()=>pauseTest(name)));
     row.appendChild(mk('⤓ Report','ghost',()=>generateReport(name)));
     row.appendChild(mk('■ Stop','stop',()=>stopNamed(name)));
     list.appendChild(row);
-    fillRunStat(name, tgt[name]||'');
+    if(!isPaused) fillRunStat(name, tgt[name]||'');   // paused tests have no live stats (reset)
   });
 }
 async function fillRunStat(name, target){
@@ -589,6 +594,26 @@ async function stopNamed(name){
     if($('mname').value===name){ $('mname').value=''; $('viewingName').textContent='— none —'; watchedName=null; samples=[]; prev=null; renderAll(); }
     loadInfo();
   }catch(e){ setConn(false); toast('Stop failed', e.message, 'error'); }
+}
+async function pauseTest(name){
+  try{
+    const r=await call('/api/v1/pause','pause',{name});
+    if(r.error && r.error.code){ toast('Pause failed', r.error.message, 'error'); return; }
+    logline('pause → '+name, r);
+    toast('Test paused', `“${name}” paused — concurrency held; stats reset.`, 'ok');
+    if(name===$('mname').value){ samples=[]; prev=null; watchedName=null; renderAll(); }  // reset graphs
+    loadInfo();
+  }catch(e){ setConn(false); toast('Pause failed', e.message, 'error'); }
+}
+async function resumeTest(name){
+  try{
+    const r=await call('/api/v1/resume','resume',{name});
+    if(r.error && r.error.code){ toast('Continue failed', r.error.message, 'error'); return; }
+    logline('resume → '+name, r);
+    toast('Test resumed', `“${name}” resumed.`, 'ok');
+    if(name===$('mname').value){ samples=[]; prev=null; watchedName=null; renderAll(); }  // fresh start
+    loadInfo();
+  }catch(e){ setConn(false); toast('Continue failed', e.message, 'error'); }
 }
 async function startTest(){
   const name=$('name').value.trim();
@@ -780,11 +805,17 @@ function renderChart(cfg){
 
 /* ---------- downloadable HTML report (goclaw theme) ---------- */
 // static, string-only SVG line+area chart from a samples snapshot (mirrors renderChart geometry)
-function repChart(pts, key, color, yFmt, floor){
+function repChart(pts, key, color, yFmt, floor, band){
   const W=760,H=210,L=54,R=18,T=14,B=30;
   if(!pts || pts.length<2) return '<div class="rc-empty">Not enough samples to plot.</div>';
   const xs=pts.map(p=>p.t), x0=xs[0], x1=xs[xs.length-1]>x0?xs[xs.length-1]:x0+1;
-  let raw=0; pts.forEach(p=>{ if(p[key]>raw) raw=p[key]; });
+  // optional trailing lo/hi range band (mirrors rollingLoHi over the ROLL window)
+  let lo=null, hi=null;
+  if(band){ lo=[]; hi=[];
+    for(let i=0;i<pts.length;i++){ let a=Infinity,b=-Infinity;
+      for(let j=Math.max(0,i-ROLL+1);j<=i;j++){ const v=pts[j][key]; if(v<a)a=v; if(v>b)b=v; }
+      lo.push(a); hi.push(b); } }
+  let raw=0; for(let i=0;i<pts.length;i++){ const v=band?hi[i]:pts[i][key]; if(v>raw) raw=v; }
   const ymax = raw>0 ? niceMax(raw*1.15) : (floor||1);
   const plotW=W-L-R, plotH=H-T-B;
   const xOf=t=> L + (t-x0)/(x1-x0)*plotW;
@@ -797,49 +828,93 @@ function repChart(pts, key, color, yFmt, floor){
   const span=x1-x0, xd=span>=20?0:span>=4?1:2;
   [0,.5,1].forEach(f=>{ const t=x0+span*f, a=f===0?'start':f===1?'end':'middle';
     g+=`<text x="${xOf(t).toFixed(1)}" y="${H-9}" text-anchor="${a}" class="rc-ax">${fmtElapsed(t,xd)}</text>`; });
+  let bandPath='';
+  if(band){ let up='',dn='';
+    pts.forEach((p,i)=>{ up+=(i?'L':'M')+xOf(p.t).toFixed(1)+' '+yOf(hi[i]).toFixed(1)+' '; });
+    for(let i=pts.length-1;i>=0;i--){ dn+='L'+xOf(pts[i].t).toFixed(1)+' '+yOf(lo[i]).toFixed(1)+' '; }
+    bandPath=`<path d="${up+dn}Z" fill="${color}" fill-opacity="0.12" stroke="none"/>`;
+  }
   let line=''; pts.forEach((p,i)=>{ line+=(i?'L':'M')+xOf(p.t).toFixed(1)+' '+yOf(p[key]).toFixed(1)+' '; });
   const area=line+`L${xOf(x1).toFixed(1)} ${yOf(0).toFixed(1)} L${xOf(x0).toFixed(1)} ${yOf(0).toFixed(1)} Z`;
   const last=pts[pts.length-1], gid='rg_'+key;
   return `<svg viewBox="0 0 ${W} ${H}" class="rc-svg" role="img" aria-label="time series chart">
   <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
   <stop offset="0%" stop-color="${color}" stop-opacity="0.24"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
-  ${g}<path d="${area}" fill="url(#${gid})"/>
+  ${g}${band?bandPath:`<path d="${area}" fill="url(#${gid})"/>`}
   <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
   <circle cx="${xOf(last.t).toFixed(1)}" cy="${yOf(last[key]).toFixed(1)}" r="4" fill="${color}" stroke="#0a0f16" stroke-width="2"/></svg>`;
+}
+
+// static, string-only topology diagram (ocean -> worker -> target), mirrors renderTopo layout
+function repTopo(g){
+  const TW=1000, TH=400;
+  const nodes=(g&&g.nodes)||[], edges=(g&&g.edges)||[];
+  if(!nodes.length) return '<div class="rc-empty">No topology available.</div>';
+  const cx={master:130, worker:TW/2, target:TW-160};
+  const pos={};
+  const place=(arr,x)=>{ const n=arr.length; arr.forEach((nd,i)=>{ pos[nd.id]={x,y:n<=1?TH/2:(TH*0.2+TH*0.6*(i/(n-1)))}; }); };
+  place(nodes.filter(n=>n.kind==='master'),cx.master);
+  place(nodes.filter(n=>n.kind==='worker'),cx.worker);
+  place(nodes.filter(n=>n.kind==='target'),cx.target);
+  const col={master:'#2ee6ff', worker:'#22d3a7', target:'#ff8a5b'};
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let s='';
+  edges.forEach(e=>{ const a=pos[e.from], b=pos[e.to]; if(!a||!b) return;
+    const dx=(b.x-a.x)*0.45, load=e.kind==='load';
+    s+=`<path d="M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}" fill="none" stroke="${load?'rgba(46,230,255,.45)':'#33465e'}" stroke-width="${load?2.5:1.5}"${load?'':' stroke-dasharray="4 6"'}/>`;
+  });
+  nodes.forEach(n=>{ const p=pos[n.id]; if(!p) return;
+    const r=n.kind==='master'?30:n.kind==='worker'?26:24, c=col[n.kind]||'#2ee6ff';
+    const label=n.kind==='master'?'OC':n.kind==='worker'?'WK':'TG';
+    const nm=n.kind==='target'?shortUrl(n.name):n.name;
+    let ip=n.ip||''; if(n.kind==='target'&&!ip){ let host=n.name; try{ host=new URL(n.name).hostname; }catch(_){} ip=dohCache[host]||''; }
+    s+=`<circle cx="${p.x}" cy="${p.y}" r="${r+7}" fill="${c}" fill-opacity="0.12"/>`;
+    s+=`<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="#0c1420" stroke="${c}" stroke-width="2.5"/>`;
+    s+=`<text x="${p.x}" y="${p.y+4}" text-anchor="middle" font-size="13" font-weight="700" fill="${c}">${label}</text>`;
+    s+=`<text x="${p.x}" y="${p.y+r+20}" text-anchor="middle" font-size="13" font-weight="600" fill="#e8eef6">${esc(nm)}</text>`;
+    s+=`<text x="${p.x}" y="${p.y+r+37}" text-anchor="middle" font-size="11" fill="#8ba0b8">${esc(ip||'—')}</text>`;
+  });
+  return `<svg viewBox="0 0 ${TW} ${TH}" class="rc-svg" role="img" aria-label="cluster topology: ocean to worker to target">${s}</svg>`;
 }
 
 async function generateReport(name){
   name=(name||$('mname').value||watchedName||'').trim();
   if(!name){ toast('No test selected','Pick a running test, then generate.','warn'); return; }
 
-  // KPIs come from THIS test's live metrics (correct regardless of which test is watched)
-  let d=null;
-  try{ const r=await call('/api/v1/metrics','metrics',{name}); d=r.data; }
-  catch(e){ setConn(false); toast('Report failed', e.message, 'error'); return; }
-  if(!d){ toast('No data', `No metrics available for “${name}”.`, 'warn'); return; }
+  // FREEZE the exact values shown on the dashboard. For the watched test that's the
+  // last rendered sample (identical to the live KPI tiles); for any other running
+  // test we fetch a one-shot snapshot since we keep no buffer for it.
+  const watched = (name===watchedName && samples.length>=1);
+  let src;
+  if(watched){
+    src = samples[samples.length-1];   // exactly what the tiles show right now — frozen
+  }else{
+    let d=null;
+    try{ const r=await call('/api/v1/metrics','metrics',{name}); d=r.data; }
+    catch(e){ setConn(false); toast('Report failed', e.message, 'error'); return; }
+    if(!d){ toast('No data', `No metrics available for “${name}”.`, 'warn'); return; }
+    const rq=+d.RequestCount||0, ec=+d.error_count||0;
+    src={ rps:+d.rps||0, req:rq, avg:+d.avg||0, min:+d.min||0, max:+d.max||0,
+          err:ec, rate: rq>0?ec/rq*100:0, wrk:+d.workerCount||0, t:+d.ElapedTime||0 };
+  }
 
-  // target from the cluster topology (per-test accurate)
-  let target='—';
+  // cluster topology (per-test target + the diagram below)
+  let target='—', topo={nodes:[],edges:[]};
   try{
     const ri=await call('/api/v1/info','info');
-    const g=JSON.parse((ri.data&&ri.data.topology)||'{}');
-    const e=(g.edges||[]).find(x=>x.kind==='load'&&x.job===name);
-    if(e){ const n=(g.nodes||[]).find(x=>x.id===e.to); if(n) target=n.name||n.endpoint||target; }
+    topo=JSON.parse((ri.data&&ri.data.topology)||'{}');
+    const e=(topo.edges||[]).find(x=>x.kind==='load'&&x.job===name);
+    if(e){ const n=(topo.nodes||[]).find(x=>x.id===e.to); if(n) target=n.name||n.endpoint||target; }
   }catch(_){}
 
   // time-series charts only when this test is the one being watched (that's the only buffer we keep)
   const pts = (name===watchedName && samples.length>=2) ? samples.slice() : [];
   const hasSeries = pts.length>=2;
 
-  const requests=+d.RequestCount||0, errors=+d.error_count||0, duration=+d.ElapedTime||0,
-        workers=+d.workerCount||0, maxLat=+d.max||0;
-  const errRate = requests>0 ? errors/requests*100 : 0;
-  const avgRps = duration>0 ? requests/duration : (+d.rps||0);
-  const peakRps = hasSeries ? Math.max(...pts.map(s=>s.rps)) : (+d.rps||avgRps);
-  const lats = hasSeries ? pts.map(s=>s.avg).filter(v=>v>0) : [];
-  const avgLat = lats.length ? lats.reduce((a,b)=>a+b,0)/lats.length : (+d.avg||0);
-  const mins = hasSeries ? pts.map(s=>s.min).filter(v=>v>0) : [];
-  const minLat = mins.length ? Math.min(...mins) : (+d.min||0);
+  // frozen KPI values (mirror the dashboard tiles 1:1)
+  const rps=+src.rps||0, requests=+src.req||0, errors=+src.err||0, duration=+src.t||0,
+        workers=+src.wrk||0, avgLat=+src.avg||0, minLat=+src.min||0, maxLat=+src.max||0;
+  const errRate = requests>0 ? errors/requests*100 : 0;   // overall — drives the tile + verdict
 
   const verdict = errRate<1 ? {cls:'pass',label:'PASSED', note:'Error rate under 1% — the target held up under load.'}
                : errRate<5 ? {cls:'warn',label:'WARNING',note:'Error rate between 1% and 5% — the target showed strain.'}
@@ -893,6 +968,8 @@ async function generateReport(name){
  .rc-svg{width:100%;height:auto;display:block}
  .rc-ax{fill:#6f8299;font-family:var(--mono);font-size:11px}
  .rc-empty{color:var(--muted);padding:40px;text-align:center;font-size:13px}
+ .topolegend{display:flex;gap:22px;justify-content:center;margin-top:8px;color:var(--muted);font-size:12.5px;flex-wrap:wrap}
+ .topolegend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;vertical-align:middle}
  table{width:100%;border-collapse:collapse;font-size:13.5px}
  th,td{text-align:left;padding:11px 4px;border-bottom:1px solid var(--border);vertical-align:top}
  th{color:var(--muted);font-weight:500;width:34%}
@@ -914,17 +991,22 @@ async function generateReport(name){
   <span class="badge">${verdict.label}</span>
   <span class="vt">${verdict.note}</span>
  </div>
+${ (topo.nodes&&topo.nodes.length) ? `
+ <h2>Topology</h2>
+ <div class="card">${repTopo(topo)}
+  <div class="topolegend"><span><i style="background:#2ee6ff"></i>ocean</span><span><i style="background:#22d3a7"></i>worker</span><span><i style="background:#ff8a5b"></i>target</span></div>
+ </div>` : '' }
 
  <h2>Summary</h2>
  <div class="grid">
-  ${kpi('Requests', compact(requests))}
-  ${kpi('Peak throughput', compact(Math.round(peakRps)),'req/s')}
-  ${kpi('Avg throughput', compact(Math.round(avgRps)),'req/s')}
-  ${kpi('Error rate', (errRate>=10?Math.round(errRate):errRate.toFixed(2)),'%')}
+  ${kpi('Throughput', compact(Math.round(rps)),'req/s')}
+  ${kpi('Total requests', compact(requests))}
   ${kpi('Avg latency', avgLat.toFixed(1),'ms')}
+  ${kpi('Error rate', (errRate>=10?Math.round(errRate):errRate.toFixed(2)),'%')}
   ${kpi('Min latency', minLat.toFixed(1),'ms')}
   ${kpi('Max latency', maxLat.toFixed(1),'ms')}
-  ${kpi('Duration', Math.round(duration),'s')}
+  ${kpi('Workers', workers)}
+  ${kpi('Elapsed', Math.round(duration),'s')}
  </div>
 
 ${ hasSeries ? `
@@ -933,12 +1015,16 @@ ${ hasSeries ? `
   ${repChart(pts,'rps','#2ee6ff',fmtInt,1)}</div>
 
  <h2>Latency over time</h2>
- <div class="card"><div class="ct"><span class="dot" style="background:#7c9cff"></span>Average latency (ms)</div>
-  ${repChart(pts,'avg','#7c9cff',v=>(v>=100?String(Math.round(v)):v.toFixed(1)),1)}</div>
+ <div class="card"><div class="ct"><span class="dot" style="background:#7c9cff"></span>Average latency (ms) · band = recent range</div>
+  ${repChart(pts,'avg','#7c9cff',v=>(v>=100?String(Math.round(v)):v.toFixed(1)),1,true)}</div>
 
  <h2>Error rate over time</h2>
  <div class="card"><div class="ct"><span class="dot" style="background:#ff6b81"></span>Errors as % of requests</div>
   ${repChart(pts,'rate','#ff6b81',v=>(v>=10?String(Math.round(v)):v.toFixed(1))+'%',1)}</div>
+
+ <h2>Errors over time</h2>
+ <div class="card"><div class="ct"><span class="dot" style="background:#ff8a8a"></span>Cumulative failures · count</div>
+  ${repChart(pts,'err','#ff8a8a',fmtInt,1)}</div>
 ` : `
  <h2>Timeline</h2>
  <div class="card"><div class="rc-empty">This is a snapshot report — the KPIs above are live totals for “${esc(name)}”.<br>Click <b>Watch</b> on this test to record the throughput / latency / error timeline, then generate again.</div></div>

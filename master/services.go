@@ -262,6 +262,73 @@ func (oc *Ocean) Stop(w http.ResponseWriter, r *http.Request) {
 	tshttp.WriteSuccess(&w, nil, nil)
 }
 
+// Pause halts a test's traffic but KEEPS its concurrency reserved (unlike Stop):
+// wk.used and the job entry are left intact, so Resume returns to the same
+// concurrency and no other test can claim the slots. The worker tears the load
+// down, so the job's stats reset (rebuilt fresh on Resume).
+func (oc *Ocean) Pause(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	name := req.Conf.Name
+
+	oc.mu.Lock()
+	j := oc.jobs[name]
+	if j == nil {
+		oc.mu.Unlock()
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 404, Message: "service not found"})
+		return
+	}
+	for id := range j.assignments {
+		if wk := oc.workers[id]; wk != nil {
+			wk.command(stopCommand(name)) // halt traffic; capacity stays reserved
+			delete(wk.metrics, name)      // reset stats (rebuilt on resume)
+			delete(wk.samples, name)
+		}
+	}
+	j.paused = true
+	oc.mu.Unlock()
+
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// Resume restarts a paused test on its held workers at the same concurrency.
+func (oc *Ocean) Resume(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	name := req.Conf.Name
+
+	oc.mu.Lock()
+	j := oc.jobs[name]
+	if j == nil {
+		oc.mu.Unlock()
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 404, Message: "service not found"})
+		return
+	}
+	for id, take := range j.assignments {
+		if wk := oc.workers[id]; wk != nil {
+			wk.command(startCommand(j.name, j.conf, take))
+		}
+	}
+	j.paused = false
+	oc.mu.Unlock()
+
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
 // GetMetrics aggregates the latest per-worker metrics for a running test.
 func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
@@ -433,9 +500,13 @@ func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	names := make([]string, 0, len(oc.jobs))
+	paused := make([]string, 0)
 	seenTarget := map[string]bool{}
 	for name, j := range oc.jobs {
 		names = append(names, name)
+		if j.paused {
+			paused = append(paused, name)
+		}
 		url := j.conf.URL
 		if url != "" {
 			tid := "target:" + url
@@ -455,6 +526,7 @@ func (oc *Ocean) GetInfo(w http.ResponseWriter, r *http.Request) {
 	data["max_connections"] = fmt.Sprintf("%d", oc.maxConnections)
 	data["max_concurrent"] = fmt.Sprintf("%d", maxConcurrent)
 	data["remaining_Concurrent"] = fmt.Sprintf("%d", maxConcurrent-used)
+	data["paused_jobs"] = strings.Join(paused, ",")
 	oc.mu.Unlock()
 
 	// fleet merge: show peer oceans + all running jobs when discovery is enabled
