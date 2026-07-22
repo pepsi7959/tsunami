@@ -127,8 +127,12 @@
 
   /* connection / worker rows */
   .conn { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border);
-    border-radius:10px; background:var(--surface-2); margin-bottom:10px; }
-  .conn.active { border-color: rgba(57,135,229,.5); }
+    border-radius:10px; background:var(--surface-2); margin-bottom:10px; position:relative; }
+  /* active (watched) row: brand-gradient left bar + faint wash + on-theme border */
+  .conn.active { border-color: rgba(249,115,22,.45);
+    background: linear-gradient(90deg, rgba(249,115,22,.12), transparent 42%), var(--surface-2); }
+  .conn.active::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px;
+    border-radius:10px 0 0 10px; background:var(--grad); }
   .conn .meta { flex:1; min-width:0; }
   .conn .nm { font-weight:650; }
   .conn .u { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -333,7 +337,7 @@
 
   <!-- observe controls: what the charts below are showing -->
   <div class="card">
-    <div class="toolbar">
+    <div class="toolbar" style="align-items:center">
       <div class="grow">Viewing: <b id="viewingName">— none —</b></div>
       <select id="mname" onchange="onWatchChange()" style="display:none"></select>
       <div class="spacer"></div>
