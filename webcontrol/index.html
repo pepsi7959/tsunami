@@ -555,10 +555,9 @@ function renderRunning(names, topo, paused){
     const row=document.createElement('div'); row.className='conn'+(viewing?' active':''); row.id=cssId(name);
     const meta=document.createElement('div'); meta.className='meta';
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=name;
-    const u=document.createElement('div'); u.className='u'; u.textContent=(tgt[name]||'—')+(isPaused?' · paused':' · loading…');
+    const u=document.createElement('div'); u.className='u'; u.textContent=(tgt[name]||'—')+(isPaused?'':' · loading…');
     meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
     const mk=(t,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.textContent=t; b.onclick=fn; return b; };
-    if(isPaused){ const bd=document.createElement('span'); bd.className='badge off'; bd.textContent='paused'; row.appendChild(bd); }
     if(viewing){ const bd=document.createElement('span'); bd.className='badge on'; bd.textContent='viewing'; row.appendChild(bd); }
     else row.appendChild(mk('Watch','ghost',()=>watchTest(name)));
     if(isPaused) row.appendChild(mk('▶ Continue','start',()=>resumeTest(name)));
