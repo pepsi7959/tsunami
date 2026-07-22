@@ -292,7 +292,6 @@
         <div class="capbar"><div class="capfill" id="capFill"></div></div>
         <div class="caplabel" id="capLabel">capacity —</div>
       </div>
-      <button class="ghost" style="width:100%; margin-top:12px" onclick="loadInfo()">Refresh</button>
     </div>
     <div class="card">
       <h2>Load test</h2>
@@ -322,8 +321,6 @@
   <div class="card">
     <div class="toolbar" style="margin-bottom:12px">
       <h2 style="margin:0">Running tests (<span id="rt_count">0</span>)</h2>
-      <div class="spacer"></div>
-      <button class="ghost mini" onclick="loadInfo()">Refresh</button>
     </div>
     <div id="runningList"></div>
   </div>
@@ -333,8 +330,8 @@
     <div class="toolbar">
       <div class="grow">Viewing: <b id="viewingName">— none —</b></div>
       <select id="mname" onchange="onWatchChange()" style="display:none"></select>
-      <button class="ghost" onclick="loadMetrics()">Fetch now</button>
       <div class="spacer"></div>
+      <button class="iconbtn" title="Refresh now" onclick="loadInfo();loadMetrics();"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg></button>
       <label class="toggle"><input type="checkbox" id="autopoll" checked onchange="togglePoll()" /> auto-refresh (2s)</label>
       <label class="toggle"><input type="checkbox" id="tableview" onchange="toggleTable()" /> table view</label>
     </div>
