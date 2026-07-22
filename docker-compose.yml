@@ -31,6 +31,12 @@ services:
     ports:
       - "8080:8080" # client API + web control target
       - "8050:8050" # worker attach stream
+    environment:
+      # first-run admin seed (local dev default admin/admin); override for real use
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-admin}
+    volumes:
+      - oceandata:/var/lib/tsunami   # SQLite auth db (users + sessions)
     depends_on:
       etcd:
         condition: service_healthy
@@ -68,5 +74,9 @@ services:
       - "8082:80"
     volumes:
       - ./webcontrol:/usr/share/nginx/html:ro
+      - ./deploy/webcontrol.conf:/etc/nginx/conf.d/default.conf:ro  # serve app + proxy /api → ocean (same-origin)
     depends_on:
       - ocean
+
+volumes:
+  oceandata:   # persists the ocean SQLite auth db across recreates

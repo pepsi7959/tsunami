@@ -17,9 +17,12 @@ VERSION="${TSUNAMI_VERSION:-}"                 # release tag; default = newest (
 PUBLIC_IP="${PUBLIC_IP:-}"
 TOKEN="${TOKEN:-}"
 MAX_CONNECTIONS="${MAX_CONNECTIONS:-2000}"
+ADMIN_USER="${ADMIN_USER:-admin}"   # web-control login (seeded first run only)
+ADMIN_PASS="${ADMIN_PASS:-}"        # empty => ocean seeds default 'admin' (with a warning)
 BIN=/usr/local/bin
 CFG=/etc/tsunami
 WWW=/var/www/tsunami
+DATA=/var/lib/tsunami                # SQLite auth db (users + sessions)
 
 log(){ printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 err(){ printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -54,7 +57,7 @@ if [ -z "$VERSION" ]; then
 fi
 log "control plane ${VERSION} (${ARCH}); advertising ${PUBLIC_IP}"
 
-mkdir -p "$CFG" "$WWW" /var/lib/etcd
+mkdir -p "$CFG" "$WWW" "$DATA" /var/lib/etcd
 
 # ---- ocean binary (from the release tarball) ----
 tmp="$(mktemp -d)"
@@ -96,6 +99,15 @@ server {
   listen 8082 default_server;
   root /var/www/tsunami;
   index index.html;
+  # same-origin API proxy so the session cookie is first-party (works in every browser)
+  location /api/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 65s;
+  }
   location / { try_files $uri $uri/ /index.html; add_header Cache-Control "no-store"; }
 }
 NG
@@ -111,7 +123,12 @@ advertise: { grpc: ${PUBLIC_IP}:8050 }
 max_connections: ${MAX_CONNECTIONS}
 registry: { endpoints: ["127.0.0.1:2379"] }
 lease: { ttl: 10 }
-auth: { token: "${TOKEN}" }
+auth:
+  token: "${TOKEN}"
+  db_path: ${DATA}/auth.db
+  session_ttl: 3600
+  cookie_secure: false            # set true once this ocean is served over HTTPS
+  bootstrap_admin: { username: "${ADMIN_USER}" }   # password via ADMIN_PASS env (systemd unit below)
 EOF
 cat >/etc/systemd/system/etcd.service <<EOF
 [Unit]
@@ -133,6 +150,8 @@ Description=tsunami ocean
 After=etcd.service
 Requires=etcd.service
 [Service]
+Environment=ADMIN_USER=${ADMIN_USER}
+Environment=ADMIN_PASS=${ADMIN_PASS}
 ExecStart=${BIN}/ocean --path ${CFG} --file config.yaml
 Restart=always
 LimitNOFILE=65536

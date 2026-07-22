@@ -11,3 +11,9 @@ registry:
     - etcd:2379
 lease:
   ttl: 10
+auth:
+  db_path: /var/lib/tsunami/auth.db # SQLite users + sessions (mount a volume here)
+  session_ttl: 3600                  # session lifetime, seconds (1 hour)
+  cookie_secure: false               # set true behind HTTPS
+  bootstrap_admin:
+    username: admin                  # password via ADMIN_PASS env (see docker-compose)

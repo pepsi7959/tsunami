@@ -38,6 +38,13 @@ func (app *App) AddAPI(pattern string, handler func(http.ResponseWriter, *http.R
 	app.ServeMux.HandleFunc(pattern, handler)
 }
 
+// Use wraps the router in a middleware (e.g. an auth gate). Call after all
+// AddAPI registrations and before Run so the wrapper sees every request.
+func (app *App) Use(mw func(http.Handler) http.Handler) {
+	app.Handler = mw(app.ServeMux)
+	app.Server.Handler = app.Handler
+}
+
 //SetRoute set up the router
 func (app *App) setRoute() {
 	app.ServeMux = http.NewServeMux()
