@@ -262,6 +262,23 @@
   .login-foot { margin-top:16px; text-align:center; color:var(--muted); font-size:11.5px; }
   .userchip { display:inline-flex; align-items:center; gap:8px; color:var(--muted); font-size:13px; }
   #userEmail { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* edit saved-test modal */
+  .modal { position:fixed; inset:0; z-index:110; display:flex; align-items:center; justify-content:center; padding:24px;
+    background:rgba(2,6,14,.6); backdrop-filter:blur(2px); }
+  .modal.hidden { display:none; }
+  .modal-card { width:100%; max-width:440px; background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; padding:22px 22px 20px; box-shadow:0 24px 60px rgba(0,0,0,.4); max-height:88vh; overflow:auto; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; font-size:15px; }
+  .modal-card label { display:block; font-size:12px; color:var(--muted); font-weight:600; margin:14px 0 6px; }
+  .modal-card input[type=text], .modal-card input[type=number], .modal-card select, .modal-card textarea {
+    width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface-2);
+    color:var(--ink); font-size:14px; font-family:inherit; }
+  .modal-card textarea { resize:vertical; }
+  .modal-card input:focus, .modal-card select:focus, .modal-card textarea:focus { outline:2px solid var(--primary); outline-offset:1px; border-color:transparent; }
+  .modal-card .row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .edit-chk { display:flex !important; align-items:center; gap:8px; color:var(--ink-2); font-weight:500 !important; margin-top:14px; }
+  .edit-chk input { width:auto; }
+  .modal-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
   details summary { cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.9px; color:var(--muted); font-weight:650; list-style:none; }
   details summary::-webkit-details-marker { display:none; }
   details summary::before { content:'▸ '; }
@@ -332,6 +349,33 @@
   </div>
 </div>
 
+<!-- edit saved test modal -->
+<div id="editModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <b>Edit saved test — <span id="edit_name"></span></b>
+      <button class="iconbtn plain" onclick="closeEditBookmark()" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <label for="edit_url">Target URL</label>
+    <input id="edit_url" type="text" placeholder="https://example.com" />
+    <div class="row2">
+      <div><label for="edit_method">Method</label>
+        <select id="edit_method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option><option>UPDATE</option></select></div>
+      <div><label for="edit_concurrence">Concurrence</label>
+        <input id="edit_concurrence" type="number" min="1" value="1" /></div>
+    </div>
+    <label for="edit_body">Request body</label>
+    <textarea id="edit_body" rows="3" placeholder="supports {{tokens}}"></textarea>
+    <label for="edit_headers">Headers — one per line, "Key: Value"</label>
+    <textarea id="edit_headers" rows="2" placeholder="Authorization: Bearer {{uuid}}"></textarea>
+    <label class="edit-chk"><input type="checkbox" id="edit_verbose" /> verbose — record the last request/response</label>
+    <div class="modal-foot">
+      <button class="ghost" onclick="closeEditBookmark()">Cancel</button>
+      <button class="start" onclick="saveEditBookmark()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="shell">
   <nav class="sidebar">
     <div class="navi active" data-page="dashboard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span> Dashboard</div>
@@ -382,6 +426,14 @@
       <h2 style="margin:0">Running tests (<span id="rt_count">0</span>)</h2>
     </div>
     <div id="runningList"></div>
+  </div>
+
+  <!-- saved tests (favorites): persist across stop, editable, re-runnable -->
+  <div class="card">
+    <div class="toolbar" style="margin-bottom:12px">
+      <h2 style="margin:0">Saved tests (<span id="bm_count">0</span>)</h2>
+    </div>
+    <div id="bookmarkList"></div>
   </div>
 
   <!-- observe controls: what the charts below are showing -->
@@ -603,6 +655,7 @@ async function loadInfo(quiet){
     const names=(d.jobs||'').split(',').map(s=>s.trim()).filter(Boolean);
     const paused=new Set((d.paused_jobs||'').split(',').map(s=>s.trim()).filter(Boolean));
     renderRunning(names, topo, paused);
+    renderBookmarks();   // keep saved-list Start buttons in sync with what's running
     if(!quiet) logline('info ok', d);
   }catch(e){ setConn(false); if(!quiet) logline('info failed: '+e.message); }
 }
@@ -628,6 +681,9 @@ const IC = {
   pause:  '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
   report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>',
   stop:   '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  star:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 18.8 6.2 21.9l1.1-6.5L2.6 9.8l6.5-.9z"/></svg>',
+  starOn: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 18.8 6.2 21.9l1.1-6.5L2.6 9.8l6.5-.9z"/></svg>',
+  edit:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
 };
 function renderRunning(names, topo, paused){
   $('rt_count').textContent = names.length;
@@ -649,6 +705,11 @@ function renderRunning(names, topo, paused){
     meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
     // icon + label button; icons match the nav's SVG line-icon set
     const mk=(icon,label,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.innerHTML=icon+'<span>'+label+'</span>'; b.onclick=fn; return b; };
+    // favorite (bookmark) toggle — filled when saved; persists after the test stops
+    const fav=bookmarkNames.has(name);
+    const favBtn=mk(fav?IC.starOn:IC.star, fav?'Saved':'Save', fav?'tonal':'ghost', ()=>toggleFavorite(name));
+    favBtn.title = fav?'Remove from saved tests':'Save this test';
+    row.appendChild(favBtn);
     if(!viewing) row.appendChild(mk(IC.watch,'Watch','ghost',()=>watchTest(name)));
     if(isPaused) row.appendChild(mk(IC.play,'Continue','start',()=>resumeTest(name)));
     else row.appendChild(mk(IC.pause,'Pause','tonal',()=>pauseTest(name)));
@@ -734,6 +795,109 @@ async function startTest(){
     if($('autopoll').checked) startPoll();
     toast('Test started', `“${name}” is now running against ${conf.url||'the target'}.`, 'ok');
   }catch(e){ setConn(false); toast('Start failed', e.message, 'error'); logline('start failed: '+e.message); }
+}
+
+/* ---------- saved tests (bookmarks) ---------- */
+let bookmarks=[]; let bookmarkNames=new Set();
+async function loadBookmarks(){
+  try{
+    const r=await call('/api/v1/bookmarks','bookmarks');
+    let arr=[]; try{ arr=JSON.parse((r.data||{}).bookmarks||'[]'); }catch(e){}
+    bookmarks=Array.isArray(arr)?arr:[];
+    bookmarkNames=new Set(bookmarks.map(b=>b.name));
+    renderBookmarks();
+  }catch(e){}
+}
+function renderBookmarks(){
+  const list=$('bookmarkList'); if(!list) return;
+  $('bm_count').textContent=bookmarks.length;
+  if(!bookmarks.length){ list.innerHTML='<div class="page-sub">No saved tests — press <b>Save</b> on a running test to bookmark it.</div>'; return; }
+  const running=new Set([...$('mname').options].map(o=>o.value).filter(Boolean));
+  list.innerHTML='';
+  bookmarks.forEach(bm=>{
+    const row=document.createElement('div'); row.className='conn';
+    const meta=document.createElement('div'); meta.className='meta';
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=bm.name;
+    const u=document.createElement('div'); u.className='u';
+    u.textContent=(bm.url||'—')+' · '+(bm.method||'GET')+' · '+(bm.concurrence||1)+'c'+(bm.verbose?' · verbose':'');
+    meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
+    const mk=(icon,label,cls,fn,dis)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.innerHTML=icon+'<span>'+label+'</span>'; b.onclick=fn; if(dis){b.disabled=true;} return b; };
+    const isRunning=running.has(bm.name);
+    const startBtn=mk(IC.play,'Start','start',()=>startBookmark(bm.name), isRunning);
+    startBtn.title = isRunning?'Already running':'Start this saved test';
+    row.appendChild(startBtn);
+    row.appendChild(mk(IC.edit,'Edit','ghost',()=>openEditBookmark(bm.name)));
+    const sep=document.createElement('span'); sep.className='btn-sep'; row.appendChild(sep);
+    const rm=mk(IC.starOn,'Remove','tonal',()=>removeBookmark(bm.name)); rm.title='Remove from saved tests';
+    row.appendChild(rm);
+    list.appendChild(row);
+  });
+}
+async function toggleFavorite(name){
+  try{
+    if(bookmarkNames.has(name)){
+      await call('/api/v1/unbookmark','unbookmark',{name});
+      toast('Removed from saved', `“${name}” is no longer bookmarked.`, 'info');
+    } else {
+      await call('/api/v1/bookmark','bookmark',{name});   // ocean pulls the live config by name
+      toast('Saved', `“${name}” added to saved tests.`, 'ok');
+    }
+    await loadBookmarks(); loadInfo(true);
+  }catch(e){ toast('Save failed', e.message||'error', 'error'); }
+}
+async function removeBookmark(name){
+  try{
+    await call('/api/v1/unbookmark','unbookmark',{name});
+    toast('Removed from saved', `“${name}” removed.`, 'info');
+    await loadBookmarks(); loadInfo(true);
+  }catch(e){ toast('Remove failed', e.message||'error', 'error'); }
+}
+async function startBookmark(name){
+  const bm=bookmarks.find(b=>b.name===name); if(!bm) return;
+  const conf={ name:bm.name, url:bm.url, method:bm.method||'GET', concurrence:bm.concurrence||1 };
+  if(bm.body) conf.body=bm.body;
+  if(bm.headers && Object.keys(bm.headers).length) conf.headers=bm.headers;
+  conf.verbose=!!bm.verbose;
+  try{
+    await loadInfo(true);
+    const running=[...$('mname').options].map(o=>o.value).filter(Boolean);
+    if(running.includes(name)){ toast('Already running', `“${name}” is already running.`, 'warn'); $('mname').value=name; onWatchChange(); return; }
+    const r=await call('/api/v1/start','start',conf);
+    if(r.error&&r.error.code){ toast('Start failed', r.error.message, 'error'); return; }
+    logline('start (saved) → '+name, r);
+    samples=[]; prev=null; renderAll();
+    await loadInfo(true); $('mname').value=name; $('viewingName').textContent=name;
+    if($('autopoll').checked) startPoll();
+    toast('Test started', `“${name}” started from saved.`, 'ok');
+  }catch(e){ toast('Start failed', e.message||'error', 'error'); }
+}
+function headersToText(h){ return Object.entries(h||{}).map(([k,v])=>k+': '+v).join('\n'); }
+function openEditBookmark(name){
+  const bm=bookmarks.find(b=>b.name===name); if(!bm) return;
+  $('edit_name').textContent=bm.name;
+  $('edit_url').value=bm.url||'';
+  $('edit_method').value=bm.method||'GET';
+  $('edit_concurrence').value=bm.concurrence||1;
+  $('edit_body').value=bm.body||'';
+  $('edit_headers').value=headersToText(bm.headers);
+  $('edit_verbose').checked=!!bm.verbose;
+  $('editModal').dataset.name=bm.name;
+  $('editModal').classList.remove('hidden');
+}
+function closeEditBookmark(){ $('editModal').classList.add('hidden'); }
+async function saveEditBookmark(){
+  const name=$('editModal').dataset.name; if(!name) return;
+  const conf={ name, url:$('edit_url').value.trim(), method:$('edit_method').value, concurrence:parseInt($('edit_concurrence').value,10)||1 };
+  if(!conf.url){ toast('URL required', 'Enter a target URL.', 'warn'); return; }
+  const body=$('edit_body').value; if(body) conf.body=body;
+  const headers=parseHeaders($('edit_headers').value); if(Object.keys(headers).length) conf.headers=headers;
+  conf.verbose=$('edit_verbose').checked;
+  try{
+    const r=await call('/api/v1/bookmark','bookmark',conf);
+    if(r.error&&r.error.code){ toast('Save failed', r.error.message, 'error'); return; }
+    toast('Saved', `“${name}” updated.`, 'ok');
+    closeEditBookmark(); await loadBookmarks();
+  }catch(e){ toast('Save failed', e.message||'error', 'error'); }
 }
 async function loadMetrics(){
   if(tick++ % 5 === 0) loadInfo(true);   // keep the running-tests dropdown fresh (~every 10s)
@@ -1478,7 +1642,7 @@ function hideLogin(){ $('loginScreen').classList.add('hidden'); }
 function enterApp(email){
   hideLogin();
   $('userEmail').textContent=email||''; $('userchip').classList.remove('hidden');
-  if(!appStarted){ appStarted=true; loadInfo(); if($('autopoll').checked) startPoll(); }
+  if(!appStarted){ appStarted=true; loadBookmarks().then(()=>loadInfo()); if($('autopoll').checked) startPoll(); }
 }
 // called by call() on any 401, and on logout
 function onUnauthorized(){
