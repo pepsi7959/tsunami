@@ -163,11 +163,21 @@
   button {
     cursor: pointer; border: none; border-radius: 8px; padding: 10px 15px;
     font-size: 14px; font-weight: 600; color: #fff; margin-top: 14px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   }
+  button svg { width: 15px; height: 15px; flex: none; }
   button.start { background: var(--grad); box-shadow: 0 6px 18px rgba(249,115,22,.28); }
-  button.stop { background: var(--danger); }
+  /* tonal = the row's primary control (Pause): soft accent, clearly leads without shouting */
+  button.tonal { background: rgba(249,115,22,.14); color: var(--primary); border: 1px solid rgba(249,115,22,.32); }
+  button.tonal:hover { background: rgba(249,115,22,.22); filter: none; }
   button.ghost { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2); }
-  button:hover { filter: brightness(1.1); }  button:disabled { opacity:.45; cursor:not-allowed; }
+  /* destructive = outlined until hover, so Stop doesn't dominate a routine list */
+  button.stop { background: transparent; border: 1px solid rgba(239,68,68,.55); color: var(--danger); }
+  button.stop:hover { background: var(--danger); color: #fff; }
+  button:hover { filter: brightness(1.08); }  button:disabled { opacity:.45; cursor:not-allowed; }
+  .btn-sep { width: 1px; height: 22px; background: var(--border); align-self: center; }
+  .watch-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background: var(--success);
+    margin-left: 8px; vertical-align: middle; box-shadow: 0 0 0 3px rgba(52,211,153,.15); }
   .info-grid { display:grid; grid-template-columns: 1fr auto; gap: 7px 16px; font-size: 13px; }
   .info-grid .k { color: var(--muted); } .info-grid .v { text-align:right; font-variant-numeric: tabular-nums; }
 
@@ -304,7 +314,7 @@
       <textarea id="headers" style="min-height:52px" placeholder="Authorization: Bearer {{uuid}}&#10;X-Env: staging"></textarea>
       <div class="hint">POST/PUT/PATCH default to <code>Content-Type: application/json; charset=utf-8</code> unless you set one. Header values support {{tokens}} too.</div>
       <label class="toggle"><input type="checkbox" id="verbose" /> verbose — record &amp; show the last request/response</label>
-      <button class="start" style="width:100%; margin-top:12px" onclick="startTest()">▶ Start test</button>
+      <button class="start" style="width:100%; margin-top:12px" onclick="startTest()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>Start test</span></button>
     </div>
   </div>
 
@@ -540,6 +550,14 @@ function onWatchChange(){ $('viewingName').textContent = $('mname').value || '�
 
 /* ---------- running tests list (manage + select) ---------- */
 function cssId(s){ return 'rt_'+String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
+// button icons (same line-icon language as the nav)
+const IC = {
+  watch:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+  play:   '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+  pause:  '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+  report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>',
+  stop:   '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+};
 function renderRunning(names, topo, paused){
   $('rt_count').textContent = names.length;
   const list=$('runningList');
@@ -555,15 +573,17 @@ function renderRunning(names, topo, paused){
     const row=document.createElement('div'); row.className='conn'+(viewing?' active':''); row.id=cssId(name);
     const meta=document.createElement('div'); meta.className='meta';
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=name;
+    if(viewing){ const d=document.createElement('span'); d.className='watch-dot'; d.title='watching'; nm.appendChild(d); }
     const u=document.createElement('div'); u.className='u'; u.textContent=(tgt[name]||'—')+(isPaused?'':' · loading…');
     meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
-    const mk=(t,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.textContent=t; b.onclick=fn; return b; };
-    if(viewing){ const bd=document.createElement('span'); bd.className='badge on'; bd.textContent='viewing'; row.appendChild(bd); }
-    else row.appendChild(mk('Watch','ghost',()=>watchTest(name)));
-    if(isPaused) row.appendChild(mk('▶ Continue','start',()=>resumeTest(name)));
-    else row.appendChild(mk('⏸ Pause','ghost',()=>pauseTest(name)));
-    row.appendChild(mk('⤓ Report','ghost',()=>generateReport(name)));
-    row.appendChild(mk('■ Stop','stop',()=>stopNamed(name)));
+    // icon + label button; icons match the nav's SVG line-icon set
+    const mk=(icon,label,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.innerHTML=icon+'<span>'+label+'</span>'; b.onclick=fn; return b; };
+    if(!viewing) row.appendChild(mk(IC.watch,'Watch','ghost',()=>watchTest(name)));
+    if(isPaused) row.appendChild(mk(IC.play,'Continue','start',()=>resumeTest(name)));
+    else row.appendChild(mk(IC.pause,'Pause','tonal',()=>pauseTest(name)));
+    row.appendChild(mk(IC.report,'Report','ghost',()=>generateReport(name)));
+    const sep=document.createElement('span'); sep.className='btn-sep'; row.appendChild(sep);   // separate the destructive action
+    row.appendChild(mk(IC.stop,'Stop','stop',()=>stopNamed(name)));
     list.appendChild(row);
     if(!isPaused) fillRunStat(name, tgt[name]||'');   // paused tests have no live stats (reset)
   });
@@ -906,6 +926,14 @@ async function generateReport(name){
     if(e){ const n=(topo.nodes||[]).find(x=>x.id===e.to); if(n) target=n.name||n.endpoint||target; }
   }catch(_){}
 
+  // latest verbose request/response sample (only present if the test was started verbose)
+  let sample=null;
+  try{
+    const rs=await call('/api/v1/sample','sample',{name});
+    const arr=JSON.parse((rs.data||{}).samples||'[]');
+    if(arr.length){ arr.sort((a,b)=>(b.ts||0)-(a.ts||0)); sample=arr[0]; }
+  }catch(_){}
+
   // time-series charts only when this test is the one being watched (that's the only buffer we keep)
   const pts = (name===watchedName && samples.length>=2) ? samples.slice() : [];
   const hasSeries = pts.length>=2;
@@ -924,6 +952,16 @@ async function generateReport(name){
   const kpi=(label,val,unit)=>`<div class="kpi"><div class="kl">${label}</div><div class="kv">${val}${unit?`<span class="ku">${unit}</span>`:''}</div></div>`;
   const row=(k,v)=>`<tr><th>${k}</th><td>${v}</td></tr>`;
   const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const hdrs=o=>Object.entries(o||{}).map(([k,v])=>esc(k)+': '+esc(v)).join('\n')||'(none)';
+  const sampleSection = sample ? `
+ <h2>Request / response sample</h2>
+ <div class="card"><div class="reqgrid">
+  <div><div class="rq-h">Request</div><div class="rq-line">${esc(sample.method||'')} ${esc(sample.url||'')}</div>
+   <pre>${hdrs(sample.requestHeaders)}</pre><pre>${esc(sample.requestBody||'(empty body)')}</pre></div>
+  <div><div class="rq-h">Response${sample.error?' — ERROR':' — '+esc(sample.status)}</div>
+   <pre>${sample.error?'':hdrs(sample.responseHeaders)}</pre>
+   <pre>${sample.error?esc(sample.error):esc(sample.responseBody||'(empty body)')}</pre></div>
+ </div></div>` : '';
 
   const html=`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -969,6 +1007,12 @@ async function generateReport(name){
  .rc-empty{color:var(--muted);padding:40px;text-align:center;font-size:13px}
  .topolegend{display:flex;gap:22px;justify-content:center;margin-top:8px;color:var(--muted);font-size:12.5px;flex-wrap:wrap}
  .topolegend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;vertical-align:middle}
+ .reqgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ @media (max-width:720px){ .reqgrid{grid-template-columns:1fr} }
+ .rq-h{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin-bottom:6px;font-family:var(--mono)}
+ .rq-line{font-family:var(--mono);font-size:12px;color:var(--cyan);word-break:break-all;margin-bottom:8px}
+ .card pre{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:var(--mono);
+   font-size:11px;color:#c6d3e2;overflow:auto;max-height:280px;white-space:pre-wrap;word-break:break-all;margin:0 0 8px}
  table{width:100%;border-collapse:collapse;font-size:13.5px}
  th,td{text-align:left;padding:11px 4px;border-bottom:1px solid var(--border);vertical-align:top}
  th{color:var(--muted);font-weight:500;width:34%}
@@ -1038,7 +1082,7 @@ ${ hasSeries ? `
   ${row('Total errors', errors.toLocaleString())}
   ${row('Elapsed', Math.round(duration)+' s')}
  </table></div>
-
+${sampleSection}
  <footer>
   <span>Generated by Tsunami · distributed load testing</span>
   <span>${esc(genStr)}</span>
@@ -1259,104 +1303,6 @@ async function rediscoverWorkers(){
 
 /* ---------- HTML report (per running test) ---------- */
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function reportFilename(name){
-  const d=new Date();
-  const yy=String(d.getFullYear()).slice(2), mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
-  const hex=Array.from({length:3},()=>Math.floor(Math.random()*16).toString(16)).join('');
-  const safe=(name||'test').replace(/[^a-zA-Z0-9_-]+/g,'_');
-  return `report-${safe}-${yy}${mm}${dd}-${hex}.html`;
-}
-function downloadHTML(filename, html){
-  const blob=new Blob([html],{type:'text/html'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1500);
-}
-async function generateReport(name){
-  try{
-    const [mr,sr,ir]=await Promise.all([
-      call('/api/v1/metrics','metrics',{name}),
-      call('/api/v1/sample','sample',{name}),
-      call('/api/v1/info','info'),
-    ]);
-    const d=mr.data;
-    if(!d || (mr.error&&mr.error.code)){ toast('Report failed',(mr.error&&mr.error.message)||'no metrics','error'); return; }
-    // target from topology (cluster info)
-    let target='—';
-    try{ const t=JSON.parse((ir.data||{}).topology||'{}'); const e=(t.edges||[]).find(x=>x.kind==='load'&&x.job===name);
-      if(e){ const n=(t.nodes||[]).find(x=>x.id===e.to); if(n) target=n.name; } }catch(_){}
-    // latest verbose sample (request info), if the test was started verbose
-    let sample=null;
-    try{ const arr=JSON.parse((sr.data||{}).samples||'[]'); if(arr.length){ arr.sort((a,b)=>(b.ts||0)-(a.ts||0)); sample=arr[0]; } }catch(_){}
-    const fn=reportFilename(name);
-    downloadHTML(fn, buildReportHTML(name, d, target, sample));
-    toast('Report generated', fn, 'ok'); logline('report → '+fn);
-  }catch(e){ setConn(false); toast('Report failed', e.message, 'error'); }
-}
-function buildReportHTML(name, d, target, sample){
-  const req=+d.RequestCount||0, err=+d.error_count||0, rps=+d.rps||0, avg=+d.avg||0,
-        min=+d.min||0, max=+d.max||0, wrk=+d.workerCount||0, el=+d.ElapedTime||0;
-  const rate = req>0 ? (err/req*100) : 0;
-  const now=new Date();
-  const kpi=(k,v,u)=>`<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}<span class="u">${esc(u||'')}</span></div></div>`;
-  const hdrs=o=>Object.entries(o||{}).map(([k,v])=>esc(k)+': '+esc(v)).join('\n')||'(none)';
-  let reqSection='';
-  if(sample){
-    reqSection = `
-  <h2>Request / response sample</h2>
-  <div class="two">
-    <div><h3>Request</h3><div class="line">${esc(sample.method||'')} ${esc(sample.url||'')}</div>
-      <pre>${hdrs(sample.requestHeaders)}</pre><pre>${esc(sample.requestBody||'(empty body)')}</pre></div>
-    <div><h3>Response${sample.error?' — ERROR':' — '+esc(sample.status)}</h3>
-      <pre>${sample.error?'':hdrs(sample.responseHeaders)}</pre>
-      <pre>${sample.error?esc(sample.error):esc(sample.responseBody||'(empty body)')}</pre></div>
-  </div>`;
-  }
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<title>Tsunami report — ${esc(name)}</title><style>
-  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;background:#f6f8fb;color:#0f172a;}
-  .brandbar{background:#0f172a;color:#fff;padding:18px 32px;display:flex;align-items:center;gap:12px;}
-  .brandbar svg{width:26px;height:26px;color:#3b82f6;}
-  .brandbar h1{font-size:17px;margin:0;font-weight:680;letter-spacing:.3px;}
-  .wrap{max-width:960px;margin:0 auto;padding:26px 32px 40px;}
-  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;margin:26px 0 12px;}
-  h3{font-size:12px;text-transform:uppercase;color:#64748b;margin:0 0 6px;}
-  .meta{color:#475569;font-size:13px;margin-bottom:6px;} .meta b{color:#0f172a;}
-  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;} @media(max-width:720px){.tiles{grid-template-columns:1fr 1fr;}}
-  .tile{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;}
-  .tile .k{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#64748b;}
-  .tile .v{font-size:24px;font-weight:680;margin-top:4px;} .tile .u{font-size:13px;color:#94a3b8;font-weight:500;margin-left:4px;}
-  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px;} @media(max-width:720px){.two{grid-template-columns:1fr;}}
-  .line{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#334155;word-break:break-all;margin-bottom:6px;}
-  pre{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:9px;font-size:11px;color:#334155;
-    overflow:auto;max-height:280px;white-space:pre-wrap;word-break:break-all;}
-  .foot{color:#94a3b8;font-size:11px;margin-top:28px;border-top:1px solid #e2e8f0;padding-top:12px;}
-  @media print{ body{background:#fff;} .brandbar{-webkit-print-color-adjust:exact;print-color-adjust:exact;} }
-</style></head><body>
-  <div class="brandbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c2 0 2 1.6 4 1.6S8 7 10 7s2 1.6 4 1.6S16 7 18 7s2 1.6 4 1.6"/><path d="M2 12c2 0 2 1.6 4 1.6S8 12 10 12s2 1.6 4 1.6S16 12 18 12s2 1.6 4 1.6"/><path d="M2 17c2 0 2 1.6 4 1.6S8 17 10 17s2 1.6 4 1.6S16 17 18 17s2 1.6 4 1.6"/></svg><h1>Tsunami · Load Test Report</h1></div>
-  <div class="wrap">
-  <div class="meta">Test: <b>${esc(name)}</b></div>
-  <div class="meta">Target: <b>${esc(target)}</b>${sample?(' &middot; Method: <b>'+esc(sample.method||'—')+'</b>'):''}</div>
-  <div class="meta">Generated: <b>${esc(now.toLocaleString())}</b> &middot; Test runtime: <b>${el.toFixed(1)}s</b></div>
-
-  <h2>Summary</h2>
-  <div class="tiles">
-    ${kpi('Throughput', Math.round(rps).toLocaleString(),'req/s')}
-    ${kpi('Total requests', req.toLocaleString(),'')}
-    ${kpi('Avg latency', avg.toFixed(2),'ms')}
-    ${kpi('Error rate', rate.toFixed(2),'%')}
-  </div>
-  <div class="tiles" style="margin-top:14px">
-    ${kpi('Min latency', min.toFixed(2),'ms')}
-    ${kpi('Max latency', max.toFixed(2),'ms')}
-    ${kpi('Errors', err.toLocaleString(),'')}
-    ${kpi('Workers', wrk.toLocaleString(),'')}
-  </div>
-  ${reqSection}
-  <div class="foot">Generated by Tsunami Web Control · ${esc(now.toISOString())}</div>
-</div></body></html>`;
-}
 
 /* ---------- verbose: last request / response ---------- */
 function hdrLines(o){ return Object.entries(o||{}).map(([k,v])=>k+': '+v).join('\n'); }
