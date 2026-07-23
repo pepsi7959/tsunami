@@ -232,6 +232,7 @@ func (c *OceanClient) stopAll() {
 func serviceMetric(ts *Tsunami) *tsgrpc.Metric {
 	var reqTotal, errTotal, resTotal, sumNanos int64
 	var min, max float64
+	buckets := make([]int64, nLatencyBuckets)
 	// iterate by pointer so we read each worker's live stats (atomically) rather
 	// than a racy struct copy.
 	for i := range ts.workers {
@@ -240,6 +241,9 @@ func serviceMetric(ts *Tsunami) *tsgrpc.Metric {
 		errTotal += int64(w.GetNumErr())
 		resTotal += int64(w.GetNumRes())
 		sumNanos += w.GetSumNanos()
+		for bi, c := range w.GetBuckets() {
+			buckets[bi] += c
+		}
 		if m := w.GetMaxRes(); m > max {
 			max = m
 		}
@@ -267,5 +271,6 @@ func serviceMetric(ts *Tsunami) *tsgrpc.Metric {
 		Max:          max,
 		Rps:          rps,
 		ElapsedTime:  elapsed,
+		Bucket:       buckets,
 	}
 }

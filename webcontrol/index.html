@@ -495,7 +495,7 @@
       <div class="chart-wrap"><svg class="chart" id="c_rps"></svg><div class="tt" id="tt_rps"></div><div class="empty" id="e_rps">waiting for data…</div></div>
     </div>
     <div class="card">
-      <div class="chart-head"><span class="title">Latency</span><span class="cap">avg · ms, band = recent range</span></div>
+      <div class="chart-head"><span class="title">Latency</span><span class="cap">p50 / p95 / p99 · ms · per interval</span></div>
       <div class="chart-wrap"><svg class="chart" id="c_lat"></svg><div class="tt" id="tt_lat"></div><div class="empty" id="e_lat">waiting for data…</div></div>
     </div>
     <div class="card">
@@ -506,6 +506,12 @@
       <div class="chart-head"><span class="title"><span class="swatch" style="background:var(--s-crit)"></span>Errors</span><span class="cap">cumulative failures · count</span></div>
       <div class="chart-wrap"><svg class="chart" id="c_err"></svg><div class="tt" id="tt_err"></div><div class="empty" id="e_err">waiting for data…</div></div>
     </div>
+  </div>
+
+  <!-- latency distribution heatmap -->
+  <div class="card">
+    <div class="chart-head"><span class="title">Latency distribution</span><span class="cap">requests per latency bucket over time · brighter = more</span></div>
+    <div class="chart-wrap"><svg class="chart" id="c_heat" style="height:280px"></svg><div class="tt" id="tt_heat"></div><div class="empty" id="e_heat">waiting for data…</div></div>
   </div>
 
   <!-- table view twin -->
@@ -899,6 +905,28 @@ async function saveEditBookmark(){
     closeEditBookmark(); await loadBookmarks();
   }catch(e){ toast('Save failed', e.message||'error', 'error'); }
 }
+// success-latency histogram buckets — MUST match worker latencyBucketBoundsMs.
+// LAT_BOUNDS = inclusive upper bounds (ms); there is one extra overflow bucket (>last).
+const LAT_BOUNDS = [1,2,5,10,25,50,100,250,500,1000,2500,5000];
+const LAT_LABELS = ['≤1','≤2','≤5','≤10','≤25','≤50','≤100','≤250','≤500','≤1k','≤2.5k','≤5k','>5k'];
+let prevBuckets = null;   // previous cumulative snapshot; diffed for per-interval histograms
+
+// percentile from a per-interval histogram (interpolated within the bucket)
+function pctlFromHist(h, p){
+  const total=h.reduce((a,b)=>a+b,0); if(!total) return 0;
+  const target=total*p; let cum=0;
+  for(let i=0;i<h.length;i++){
+    if(h[i]<=0) continue;
+    if(cum+h[i]>=target){
+      const lo=i===0?0:LAT_BOUNDS[i-1];
+      const hi=i<LAT_BOUNDS.length?LAT_BOUNDS[i]:LAT_BOUNDS[LAT_BOUNDS.length-1];
+      return lo+(hi-lo)*((target-cum)/h[i]);
+    }
+    cum+=h[i];
+  }
+  return LAT_BOUNDS[LAT_BOUNDS.length-1];
+}
+
 async function loadMetrics(){
   if(tick++ % 5 === 0) loadInfo(true);   // keep the running-tests dropdown fresh (~every 10s)
   const name=$('mname').value.trim();
@@ -907,7 +935,7 @@ async function loadMetrics(){
   $('viewingName').textContent = name;                            // keep the label synced on auto-poll
   // watched test changed (manual pick or auto-switch after a stop) → start a fresh
   // buffer so the charts never mix two tests' timelines (was the "distortion" bug)
-  if(name!==watchedName){ watchedName=name; samples=[]; prev=null; renderAll(); }
+  if(name!==watchedName){ watchedName=name; samples=[]; prev=null; prevBuckets=null; renderAll(); }
   loadSample(name);   // verbose panel (no-op / hidden if the job isn't verbose)
   try{
     const r=await call('/api/v1/metrics','metrics',{name});
@@ -921,6 +949,16 @@ async function loadMetrics(){
     }
     prev={req,err,t};
     const s={ t, rps:Math.max(0,rps), avg:+d.avg||0, min:+d.min||0, max:+d.max||0, req, err, rate, wrk:+d.workerCount||0 };
+    // per-interval latency histogram (diff of cumulative bucket snapshots) → p50/p95/p99 + heatmap
+    let hist=[];
+    try{
+      const cur=JSON.parse(d.buckets||'[]').map(Number);
+      if(prevBuckets && prevBuckets.length===cur.length) hist=cur.map((c,i)=>Math.max(0,c-prevBuckets[i]));
+      else hist=cur.slice();
+      prevBuckets=cur;
+    }catch(_){}
+    s.hist=hist;
+    s.p50=pctlFromHist(hist,0.50); s.p95=pctlFromHist(hist,0.95); s.p99=pctlFromHist(hist,0.99);
     samples.push(s); if(samples.length>MAX_SAMPLES) samples.shift();
     updateTiles(s); renderAll(); if(!$('tableCard').classList.contains('hidden')) renderTable();
   }catch(e){ setConn(false); logline('metrics failed: '+e.message); }
@@ -965,7 +1003,9 @@ function renderChart(cfg){
   if(samples.length<2){ $(cfg.empty).style.display='flex'; svg.innerHTML=''; return; }
   $(cfg.empty).style.display='none';
 
-  const roll = cfg.rolling ? rollingLoHi(cfg.valKey, ROLL) : null;
+  const series = cfg.series || [{key:cfg.valKey, color:cfg.color, label:cfg.valLabel}];
+  const multi = !!cfg.series;
+  const roll = (!multi && cfg.rolling) ? rollingLoHi(cfg.valKey, ROLL) : null;
   const xs=samples.map(s=>s.t);
   const x0=xs[0], x1=xs[xs.length-1] > x0 ? xs[xs.length-1] : x0+1;
   const plotW=W-PAD.l-PAD.r, plotH=H-PAD.t-PAD.b;
@@ -973,7 +1013,10 @@ function renderChart(cfg){
 
   // y-max
   let rawMax=0;
-  for(let i=0;i<samples.length;i++){ rawMax=Math.max(rawMax, roll?roll.hi[i]:samples[i][cfg.valKey]); }
+  for(let i=0;i<samples.length;i++){
+    if(roll) rawMax=Math.max(rawMax, roll.hi[i]);
+    series.forEach(se=>{ const v=samples[i][se.key]; if(v>rawMax) rawMax=v; });
+  }
   let ymax, steps=4;
   if(cfg.integer){ const m=Math.max(1,Math.ceil(rawMax)); if(m<=5){ ymax=m; steps=m; } else { ymax=niceMax(Math.ceil(m*1.15)); } }
   else { ymax = rawMax>0 ? niceMax(rawMax*1.15) : (cfg.floorMax||1); }
@@ -1022,19 +1065,28 @@ function renderChart(cfg){
     plot.appendChild(svgEl('path',{d:up+dn+'Z', fill:cfg.color, 'fill-opacity':0.12, stroke:'none'}));
   }
 
-  // area wash + line
-  let line='';
-  samples.forEach((s,i)=>{ line+=(i?'L':'M')+xOf(s.t)+' '+yOf(s[cfg.valKey])+' '; });
-  if(!roll) plot.appendChild(svgEl('path',{d:line+`L${xOf(x1)} ${yOf(0)} L${xOf(x0)} ${yOf(0)} Z`, fill:`url(#${gid})`, stroke:'none'}));
-  plot.appendChild(svgEl('path',{d:line, fill:'none', stroke:cfg.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
-
-  // end dot with surface ring
+  // area wash (single-series only) + one line + end dot per series
   const last=samples[samples.length-1];
-  plot.appendChild(svgEl('circle',{cx:xOf(last.t),cy:yOf(last[cfg.valKey]),r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2}));
+  series.forEach(se=>{
+    let line='';
+    samples.forEach((s,i)=>{ line+=(i?'L':'M')+xOf(s.t)+' '+yOf(s[se.key])+' '; });
+    if(!multi && !roll) plot.appendChild(svgEl('path',{d:line+`L${xOf(x1)} ${yOf(0)} L${xOf(x0)} ${yOf(0)} Z`, fill:`url(#${gid})`, stroke:'none'}));
+    plot.appendChild(svgEl('path',{d:line, fill:'none', stroke:se.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+    plot.appendChild(svgEl('circle',{cx:xOf(last.t),cy:yOf(last[se.key]),r:4,fill:se.color,stroke:'var(--surface)','stroke-width':2}));
+  });
+  // legend (multi-series only)
+  if(multi){
+    let lx=PAD.l+4;
+    series.forEach(se=>{
+      frag.appendChild(svgEl('rect',{x:lx,y:PAD.t-3,width:9,height:9,rx:2,fill:se.color}));
+      const tx=svgEl('text',{x:lx+13,y:PAD.t+5,class:'axis-label',fill:se.color}); tx.textContent=se.label;
+      frag.appendChild(tx); lx += 22 + se.label.length*8;
+    });
+  }
 
   // crosshair + hover marker
   const cross=svgEl('line',{x1:0,x2:0,y1:PAD.t,y2:PAD.t+plotH,stroke:'var(--muted)','stroke-width':1,'stroke-opacity':0.6,visibility:'hidden'});
-  const hov=svgEl('circle',{r:4,fill:cfg.color,stroke:'var(--surface)','stroke-width':2,visibility:'hidden'});
+  const hov=svgEl('circle',{r:4,fill:series[0].color,stroke:'var(--surface)','stroke-width':2,visibility:'hidden'});
   plot.appendChild(cross); plot.appendChild(hov);
 
   svg.innerHTML=''; svg.appendChild(frag);
@@ -1043,16 +1095,21 @@ function renderChart(cfg){
     const rect=svg.getBoundingClientRect();
     const px=(ev.clientX-rect.left)*(W/rect.width);
     let best=0,bd=1e9; samples.forEach((s,i)=>{ const d=Math.abs(xOf(s.t)-px); if(d<bd){bd=d;best=i;} });
-    const s=samples[best], cx=xOf(s.t), cy=yOf(s[cfg.valKey]);
+    const s=samples[best], cx=xOf(s.t), cy=yOf(s[series[0].key]);
     cross.setAttribute('x1',cx); cross.setAttribute('x2',cx); cross.setAttribute('visibility','visible');
     hov.setAttribute('cx',cx); hov.setAttribute('cy',cy); hov.setAttribute('visibility','visible');
     tt.style.opacity=1;
     tt.style.left=(cx/W*rect.width)+'px';
     tt.style.top=(cy/H*rect.height)+'px';
-    tt.innerHTML=`<div class="tt-t"></div><div class="tt-v"></div><div class="tt-r"></div>`;
-    tt.children[0].textContent='t + '+fmtElapsed(s.t,0);
-    tt.children[1].textContent=cfg.valLabel+': '+cfg.yFmt(s[cfg.valKey]);
-    tt.children[2].textContent = roll ? `recent range ${cfg.yFmt(roll.lo[best])}–${cfg.yFmt(roll.hi[best])}` : '';
+    if(multi){
+      tt.innerHTML=`<div class="tt-t">t + ${fmtElapsed(s.t,0)}</div>`+
+        series.map(se=>`<div class="tt-v" style="color:${se.color}">${se.label}: ${cfg.yFmt(s[se.key])}</div>`).join('');
+    }else{
+      tt.innerHTML=`<div class="tt-t"></div><div class="tt-v"></div><div class="tt-r"></div>`;
+      tt.children[0].textContent='t + '+fmtElapsed(s.t,0);
+      tt.children[1].textContent=cfg.valLabel+': '+cfg.yFmt(s[cfg.valKey]);
+      tt.children[2].textContent = roll ? `recent range ${cfg.yFmt(roll.lo[best])}–${cfg.yFmt(roll.hi[best])}` : '';
+    }
   };
   svg.onpointerleave=()=>{ cross.setAttribute('visibility','hidden'); hov.setAttribute('visibility','hidden'); tt.style.opacity=0; };
 }
@@ -1368,9 +1425,53 @@ ${sampleSection}
 
 function renderAll(){
   renderChart({svg:'c_rps', tt:'tt_rps', empty:'e_rps', color:'var(--s-blue)', valKey:'rps',  valLabel:'req/s',      yFmt:fmtInt, integer:true});
-  renderChart({svg:'c_lat', tt:'tt_lat', empty:'e_lat', color:'var(--s-aqua)', valKey:'avg',  valLabel:'avg',        yFmt:fmtMs,  rolling:true});
+  renderChart({svg:'c_lat', tt:'tt_lat', empty:'e_lat', yFmt:fmtMs, series:[
+    {key:'p50', color:'var(--s-aqua)', label:'p50'},
+    {key:'p95', color:'var(--warn)',   label:'p95'},
+    {key:'p99', color:'var(--s-crit)', label:'p99'}]});
   renderChart({svg:'c_rate',tt:'tt_rate',empty:'e_rate',color:'var(--s-crit)', valKey:'rate', valLabel:'error rate', yFmt:fmtPct, floorMax:1});
   renderChart({svg:'c_err', tt:'tt_err', empty:'e_err', color:'var(--s-crit)', valKey:'err',  valLabel:'errors',     yFmt:fmtInt, integer:true});
+  renderHeatmap();
+}
+
+// latency distribution heatmap: rows = latency buckets (high at top), cols = time,
+// cell brightness = requests that landed in that bucket during that interval.
+function renderHeatmap(){
+  const svg=$('c_heat'), tt=$('tt_heat');
+  const W=svg.clientWidth||svg.parentNode.clientWidth||600, H=svg.clientHeight||280;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const pts=samples.filter(s=>s.hist && s.hist.length);
+  if(pts.length<1){ $('e_heat').style.display='flex'; svg.innerHTML=''; return; }
+  $('e_heat').style.display='none';
+  const P={l:58,r:14,t:10,b:24}, nB=LAT_LABELS.length;
+  const plotW=W-P.l-P.r, plotH=H-P.t-P.b, cw=plotW/pts.length, rh=plotH/nB;
+  let maxC=1; pts.forEach(s=>(s.hist||[]).forEach(c=>{ if(c>maxC) maxC=c; }));
+  const logMax=Math.log(maxC+1);
+  const frag=document.createDocumentFragment();
+  pts.forEach((s,ci)=>{ const h=s.hist||[];
+    for(let bi=0;bi<nB;bi++){ const c=h[bi]||0; const row=nB-1-bi;   // highest bucket on top
+      const op = c>0 ? (0.10+0.90*(Math.log(c+1)/logMax)) : 0;
+      frag.appendChild(svgEl('rect',{x:(P.l+ci*cw).toFixed(1),y:(P.t+row*rh).toFixed(1),
+        width:(cw+0.6).toFixed(1),height:(rh+0.6).toFixed(1),fill:'var(--s-aqua)','fill-opacity':op.toFixed(3)}));
+    }
+  });
+  for(let bi=0;bi<nB;bi++){ if(bi%2!==0 && bi!==nB-1) continue;   // label every other row
+    const row=nB-1-bi, y=(P.t+row*rh+rh/2+3).toFixed(1);
+    const tx=svgEl('text',{x:P.l-8,y,'text-anchor':'end',class:'axis-label'}); tx.textContent=LAT_LABELS[bi]+'ms'; frag.appendChild(tx);
+  }
+  const span=(pts[pts.length-1].t-pts[0].t)||1, xd=span>=20?0:span>=4?1:2;
+  [0,.5,1].forEach(f=>{ const ci=Math.round((pts.length-1)*f), x=(P.l+ci*cw+cw/2).toFixed(1);
+    const tx=svgEl('text',{x,y:H-7,'text-anchor':f===0?'start':f===1?'end':'middle',class:'axis-label'}); tx.textContent=fmtElapsed(pts[ci].t,xd); frag.appendChild(tx); });
+  svg.innerHTML=''; svg.appendChild(frag);
+  svg.onpointermove=(ev)=>{ const rect=svg.getBoundingClientRect();
+    const px=(ev.clientX-rect.left)*(W/rect.width), py=(ev.clientY-rect.top)*(H/rect.height);
+    const ci=Math.floor((px-P.l)/cw), row=Math.floor((py-P.t)/rh);
+    if(ci<0||ci>=pts.length||row<0||row>=nB){ tt.style.opacity=0; return; }
+    const bi=nB-1-row, s=pts[ci], c=(s.hist||[])[bi]||0;
+    tt.style.opacity=1; tt.style.left=(px/W*rect.width)+'px'; tt.style.top=(py/H*rect.height)+'px';
+    tt.innerHTML=`<div class="tt-t">t + ${fmtElapsed(s.t,0)} · ${LAT_LABELS[bi]}ms</div><div class="tt-v">${c} req</div>`;
+  };
+  svg.onpointerleave=()=>{ tt.style.opacity=0; };
 }
 function renderTable(){
   const tb=$('sampleTable').querySelector('tbody');
