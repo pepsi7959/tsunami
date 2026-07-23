@@ -679,6 +679,11 @@ function fmtElapsed(t, dec){ t=Math.max(0,t);
 const fmtInt = v=>Math.round(v).toLocaleString();
 const fmtMs  = v=>(v>=100?String(Math.round(v)):v.toFixed(1));
 const fmtPct = v=>(v>=10?String(Math.round(v)):v.toFixed(1))+'%';
+// latency value + unit: seconds at/above 1000ms, else ms (keeps big values readable)
+function latParts(ms){ ms=+ms||0;
+  if(ms>=1000){ const s=ms/1000; return {v:(s>=100?String(Math.round(s)):s.toFixed(s>=10?1:2)), u:'s'}; }
+  return {v:(ms>=100?String(Math.round(ms)):ms.toFixed(1)), u:'ms'};
+}
 
 /* ---------- API ---------- */
 async function call(path, cmd, conf={}){
@@ -1094,10 +1099,11 @@ async function loadMetrics(){
 function updateTiles(s){
   $('m_rps').innerHTML  = compact(Math.round(s.rps))+'<span class="u">req/s</span>';
   $('m_req').textContent = compact(s.req);
-  $('m_avg').innerHTML  = (s.avg?s.avg.toFixed(1):'0')+'<span class="u">ms</span>';
+  const pa=latParts(s.avg), pmn=latParts(s.min), pmx=latParts(s.max);
+  $('m_avg').innerHTML  = pa.v+'<span class="u">'+pa.u+'</span>';
   $('m_rate').innerHTML = (s.rate>=10?Math.round(s.rate):s.rate.toFixed(2))+'<span class="u">%</span>';
-  $('m_min').innerHTML  = (s.min?s.min.toFixed(1):'0')+'<span class="u">ms</span>';
-  $('m_max').innerHTML  = (s.max?s.max.toFixed(1):'0')+'<span class="u">ms</span>';
+  $('m_min').innerHTML  = pmn.v+'<span class="u">'+pmn.u+'</span>';
+  $('m_max').innerHTML  = pmx.v+'<span class="u">'+pmx.u+'</span>';
   $('m_wrk').textContent = s.wrk;
   $('m_el').innerHTML   = Math.round(s.t)+'<span class="u">s</span>';
 }
@@ -1428,6 +1434,7 @@ async function generateReport(name){
   // frozen KPI values (mirror the dashboard tiles 1:1)
   const rps=+src.rps||0, requests=+src.req||0, errors=+src.err||0, duration=+src.t||0,
         workers=+src.wrk||0, avgLat=+src.avg||0, minLat=+src.min||0, maxLat=+src.max||0;
+  const laAvg=latParts(avgLat), laMin=latParts(minLat), laMax=latParts(maxLat);   // seconds at/above 1000ms
   const errRate = requests>0 ? errors/requests*100 : 0;   // overall — drives the tile + verdict
 
   const verdict = errRate<1 ? {cls:'pass',label:'PASSED', note:'Error rate under 1% — the target held up under load.'}
@@ -1557,10 +1564,10 @@ ${ (topo.nodes&&topo.nodes.length) ? `
  <div class="grid">
   ${kpi('Throughput', compact(Math.round(rps)),'req/s')}
   ${kpi('Total requests', compact(requests))}
-  ${kpi('Avg latency', avgLat.toFixed(1),'ms')}
+  ${kpi('Avg latency', laAvg.v, laAvg.u)}
   ${kpi('Error rate', (errRate>=10?Math.round(errRate):errRate.toFixed(2)),'%')}
-  ${kpi('Min latency', minLat.toFixed(1),'ms')}
-  ${kpi('Max latency', maxLat.toFixed(1),'ms')}
+  ${kpi('Min latency', laMin.v, laMin.u)}
+  ${kpi('Max latency', laMax.v, laMax.u)}
   ${kpi('Workers', workers)}
   ${kpi('Elapsed', Math.round(duration),'s')}
  </div>
@@ -1889,7 +1896,7 @@ async function loadSample(name){
     if(sampleSeen.stale>=2){ card.classList.add('hidden'); return; }
     card.classList.remove('hidden');
     const when = s.ts ? new Date(s.ts).toLocaleTimeString() : '';
-    $('sampleMeta').textContent = `— ${s.worker||''} · ${when} · ${(s.latencyMs||0).toFixed(1)} ms`;
+    $('sampleMeta').textContent = (()=>{ const p=latParts(s.latencyMs||0); return `— ${s.worker||''} · ${when} · ${p.v} ${p.u}`; })();
     $('smpReqLine').textContent = `${s.method||''} ${s.url||''}`;
     $('smpReqHeaders').textContent = hdrLines(s.requestHeaders) || '(no headers)';
     $('smpReqBody').textContent = s.requestBody || '(empty body)';
