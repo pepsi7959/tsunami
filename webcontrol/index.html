@@ -510,7 +510,7 @@
 
   <!-- latency distribution heatmap -->
   <div class="card">
-    <div class="chart-head"><span class="title">Latency distribution</span><span class="cap">requests per latency bucket over time · brighter = more</span></div>
+    <div class="chart-head"><span class="title">Latency distribution</span><span class="cap">requests per latency bucket over time · hotter = more</span></div>
     <div class="chart-wrap"><svg class="chart" id="c_heat" style="height:280px"></svg><div class="tt" id="tt_heat"></div><div class="empty" id="e_heat">waiting for data…</div></div>
   </div>
 
@@ -1447,12 +1447,18 @@ function renderHeatmap(){
   const plotW=W-P.l-P.r, plotH=H-P.t-P.b, cw=plotW/pts.length, rh=plotH/nB;
   let maxC=1; pts.forEach(s=>(s.hist||[]).forEach(c=>{ if(c>maxC) maxC=c; }));
   const logMax=Math.log(maxC+1);
+  // warm heat ramp: amber (cooler) -> hot gold (busiest). density is double-encoded
+  // as hue AND opacity, so it reads on both themes (opacity blends with the surface)
+  // and doesn't rely on colour alone.
+  const heatColor=t=>{ const a=[217,119,6], b=[255,224,138];
+    return `rgb(${Math.round(a[0]+(b[0]-a[0])*t)},${Math.round(a[1]+(b[1]-a[1])*t)},${Math.round(a[2]+(b[2]-a[2])*t)})`; };
   const frag=document.createDocumentFragment();
   pts.forEach((s,ci)=>{ const h=s.hist||[];
     for(let bi=0;bi<nB;bi++){ const c=h[bi]||0; const row=nB-1-bi;   // highest bucket on top
-      const op = c>0 ? (0.10+0.90*(Math.log(c+1)/logMax)) : 0;
+      const t = c>0 ? (Math.log(c+1)/logMax) : 0;
+      const op = c>0 ? (0.14+0.86*t) : 0;
       frag.appendChild(svgEl('rect',{x:(P.l+ci*cw).toFixed(1),y:(P.t+row*rh).toFixed(1),
-        width:(cw+0.6).toFixed(1),height:(rh+0.6).toFixed(1),fill:'var(--s-aqua)','fill-opacity':op.toFixed(3)}));
+        width:(cw+0.6).toFixed(1),height:(rh+0.6).toFixed(1),fill:heatColor(t),'fill-opacity':op.toFixed(3)}));
     }
   });
   for(let bi=0;bi<nB;bi++){ if(bi%2!==0 && bi!==nB-1) continue;   // label every other row
