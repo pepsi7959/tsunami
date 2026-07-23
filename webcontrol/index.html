@@ -510,7 +510,7 @@
 
   <!-- latency distribution heatmap -->
   <div class="card">
-    <div class="chart-head"><span class="title">Latency distribution</span><span class="cap">requests per latency bucket over time · hotter = more</span></div>
+    <div class="chart-head"><span class="title">Latency distribution</span><span class="cap">requests per latency bucket over time · brighter = more</span></div>
     <div class="chart-wrap"><svg class="chart" id="c_heat" style="height:280px"></svg><div class="tt" id="tt_heat"></div><div class="empty" id="e_heat">waiting for data…</div></div>
   </div>
 
@@ -1447,20 +1447,12 @@ function renderHeatmap(){
   const plotW=W-P.l-P.r, plotH=H-P.t-P.b, cw=plotW/pts.length, rh=plotH/nB;
   let maxC=1; pts.forEach(s=>(s.hist||[]).forEach(c=>{ if(c>maxC) maxC=c; }));
   const logMax=Math.log(maxC+1);
-  // fire heat ramp (color-hex palette #55783): bright yellow (quiet) -> gold ->
-  // orange -> hot red (busiest). density is double-encoded as hue AND opacity, so it
-  // reads on both themes (opacity blends with the surface) and doesn't rely on colour
-  // alone.
-  const HEAT=[[255,243,59],[253,199,12],[243,144,63],[237,104,60],[233,62,58]];
-  const heatColor=t=>{ const s=Math.max(0,Math.min(1,t))*(HEAT.length-1), i=Math.min(HEAT.length-2,Math.floor(s)), f=s-i, a=HEAT[i], b=HEAT[i+1];
-    return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`; };
   const frag=document.createDocumentFragment();
   pts.forEach((s,ci)=>{ const h=s.hist||[];
     for(let bi=0;bi<nB;bi++){ const c=h[bi]||0; const row=nB-1-bi;   // highest bucket on top
-      const t = c>0 ? (Math.log(c+1)/logMax) : 0;
-      const op = c>0 ? (0.30+0.70*t) : 0;
+      const op = c>0 ? (0.10+0.90*(Math.log(c+1)/logMax)) : 0;
       frag.appendChild(svgEl('rect',{x:(P.l+ci*cw).toFixed(1),y:(P.t+row*rh).toFixed(1),
-        width:(cw+0.6).toFixed(1),height:(rh+0.6).toFixed(1),fill:heatColor(t),'fill-opacity':op.toFixed(3)}));
+        width:(cw+0.6).toFixed(1),height:(rh+0.6).toFixed(1),fill:'var(--s-aqua)','fill-opacity':op.toFixed(3)}));
     }
   });
   for(let bi=0;bi<nB;bi++){ if(bi%2!==0 && bi!==nB-1) continue;   // label every other row
