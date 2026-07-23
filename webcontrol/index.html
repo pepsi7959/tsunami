@@ -405,9 +405,12 @@
     <label>Variables — reference as <code>{{name}}</code> in URL, headers &amp; body</label>
     <div id="envVars"></div>
     <button class="ghost mini" type="button" onclick="addEnvRow()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>Add variable</span></button>
-    <div class="modal-foot">
-      <button class="ghost" onclick="closeEnvEditor()">Cancel</button>
-      <button class="start" onclick="saveEnvEditor()">Save</button>
+    <div class="modal-foot" style="justify-content:space-between">
+      <button class="tonal" id="envDeleteBtn" type="button" onclick="deleteEnvFromEditor()">Delete</button>
+      <span style="display:flex; gap:10px">
+        <button class="ghost" onclick="closeEnvEditor()">Cancel</button>
+        <button class="start" onclick="saveEnvEditor()">Save</button>
+      </span>
     </div>
   </div>
 </div>
@@ -470,15 +473,6 @@
       <h2 style="margin:0">Saved tests (<span id="bm_count">0</span>)</h2>
     </div>
     <div id="bookmarkList"></div>
-  </div>
-
-  <!-- environments: shared {{var}} presets, applied to a test at start -->
-  <div class="card">
-    <div class="toolbar" style="margin-bottom:12px; align-items:center">
-      <h2 style="margin:0">Environments (<span id="env_count">0</span>)</h2>
-      <button class="ghost mini" type="button" onclick="openEnvEditor()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>New</span></button>
-    </div>
-    <div id="envList"></div>
   </div>
 
   <!-- observe controls: what the charts below are showing -->
@@ -935,7 +929,7 @@ async function loadEnvs(){
     let arr=[]; try{ arr=JSON.parse(d.envs||'[]'); }catch(e){}
     envs=Array.isArray(arr)?arr:[];
     activeEnv=d.active||'';   // server is the source of truth for the active env
-    renderEnvs(); populateEnvSelect();
+    populateEnvSelect();
   }catch(e){}
 }
 function populateEnvSelect(){
@@ -953,26 +947,6 @@ async function setActiveEnv(){
     logline('active env → '+(name||'(none)'));
     toast('Active environment', name?`“${name}” is now active — applied when you start or continue a test.`:'No active environment.', 'info');
   }catch(e){ toast('Could not set active env', e.message||'error', 'error'); }
-}
-function renderEnvs(){
-  const list=$('envList'); if(!list) return;
-  $('env_count').textContent=envs.length;
-  if(!envs.length){ list.innerHTML='<div class="page-sub">No environments — press <b>New</b> to create one.</div>'; return; }
-  list.innerHTML='';
-  envs.forEach(e=>{
-    const keys=Object.keys(e.vars||{}); const n=keys.length;
-    const row=document.createElement('div'); row.className='conn';
-    const meta=document.createElement('div'); meta.className='meta';
-    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=e.name;
-    const u=document.createElement('div'); u.className='u';
-    u.textContent=n+' variable'+(n===1?'':'s')+(n?' · '+keys.slice(0,5).join(', ')+(n>5?'…':''):'');
-    meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
-    const mk=(icon,label,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.innerHTML=icon+'<span>'+label+'</span>'; b.onclick=fn; return b; };
-    row.appendChild(mk(IC.edit,'Edit','ghost',()=>openEnvEditor(e.name)));
-    const sep=document.createElement('span'); sep.className='btn-sep'; row.appendChild(sep);
-    row.appendChild(mk(IC.stop,'Delete','tonal',()=>deleteEnv(e.name)));
-    list.appendChild(row);
-  });
 }
 function addEnvRow(k='',v=''){
   const wrap=$('envVars'); if(!wrap) return;
@@ -993,9 +967,16 @@ function openEnvEditor(name){
   const wrap=$('envVars'); wrap.innerHTML='';
   const entries=e?Object.entries(e.vars||{}):[];
   if(entries.length) entries.forEach(([k,v])=>addEnvRow(k,v)); else { addEnvRow(); addEnvRow(); }
+  $('envDeleteBtn').style.display = e ? '' : 'none';   // Delete only when editing an existing env
   $('envModal').classList.remove('hidden');
 }
 function closeEnvEditor(){ $('envModal').classList.add('hidden'); }
+async function deleteEnvFromEditor(){
+  const orig=$('env_name').dataset.orig;
+  if(!orig){ closeEnvEditor(); return; }
+  await deleteEnv(orig);
+  closeEnvEditor();
+}
 async function saveEnvEditor(){
   const name=$('env_name').value.trim();
   if(!name){ toast('Name required','Give the environment a name.','warn'); return; }
@@ -1016,6 +997,7 @@ async function saveEnvEditor(){
 async function deleteEnv(name){
   try{
     await call('/api/v1/env-delete','env-delete',{name});
+    if(name===activeEnv){ try{ await call('/api/v1/env-active','env-active',{name:''}); }catch(_){} }  // was active → clear
     await loadEnvs();
     toast('Environment deleted', `“${name}” removed.`, 'info');
   }catch(e){ toast('Delete failed', e.message||'error', 'error'); }
