@@ -309,12 +309,12 @@ func (oc *Ocean) SaveBookmark(w http.ResponseWriter, r *http.Request) {
 	if c.URL == "" {
 		oc.mu.Lock()
 		if j := oc.jobs[c.Name]; j != nil {
-			c.URL = j.conf.URL
-			c.Method = j.conf.Method
-			c.Concurrence = j.conf.Concurrence
-			c.Body = j.conf.Body
-			c.Headers = j.conf.Headers
-			c.Verbose = j.conf.Verbose
+			c.URL = j.rawConf.URL
+			c.Method = j.rawConf.Method
+			c.Concurrence = j.rawConf.Concurrence
+			c.Body = j.rawConf.Body
+			c.Headers = j.rawConf.Headers
+			c.Verbose = j.rawConf.Verbose
 		}
 		oc.mu.Unlock()
 	}
@@ -374,8 +374,30 @@ func (oc *Ocean) GetEnvs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, _ := json.Marshal(list)
-	data := map[string]string{"envs": string(b)}
+	active, _ := oc.auth.Store().GetSetting("active_env")
+	data := map[string]string{"envs": string(b), "active": active}
 	tshttp.WriteSuccess(&w, &data, nil)
+}
+
+// SetActiveEnv persists the active environment applied by every start and
+// resume, so the choice is shared and survives reloads / multiple clients.
+func (oc *Ocean) SetActiveEnv(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	if err := oc.auth.Store().SetSetting("active_env", strings.TrimSpace(req.Conf.Name)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not set active env"})
+		return
+	}
+	tshttp.WriteSuccess(&w, nil, nil)
 }
 
 // SaveEnv upserts an environment (name + variable map).
@@ -460,6 +482,43 @@ func applyEnv(conf *tshttp.Conf, vars map[string]string) {
 	}
 }
 
+// activeEnv returns the currently-selected environment name (persisted server
+// side so start/resume always apply the same active env, for every client).
+func (oc *Ocean) activeEnv() string {
+	v, _ := oc.auth.Store().GetSetting("active_env")
+	return v
+}
+
+// envVars returns the variable map for a named environment, or nil if the name
+// is empty or the environment does not exist.
+func (oc *Ocean) envVars(name string) map[string]string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	if e, err := oc.auth.Store().GetEnv(name); err == nil && e != nil {
+		return e.Vars
+	}
+	return nil
+}
+
+// confWithEnv returns a copy of conf (cloning the headers map so the caller's
+// original is left untouched) with the environment's {{vars}} substituted. The
+// untouched original keeps its {{tokens}}, so a different env can be applied
+// later when a paused test is resumed.
+func confWithEnv(conf tshttp.Conf, vars map[string]string) tshttp.Conf {
+	out := conf
+	if conf.Headers != nil {
+		h := make(map[string]string, len(conf.Headers))
+		for k, v := range conf.Headers {
+			h[k] = v
+		}
+		out.Headers = h
+	}
+	applyEnv(&out, vars)
+	return out
+}
+
 // Start splits a load test across attached workers (reject if capacity short).
 func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
@@ -472,15 +531,10 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := req.Conf.Name
-	conf := confFromReq(req.Conf)
-	// apply an environment preset (if selected): substitute its {{vars}} into the
-	// URL/path/body/headers now, so the substituted conf is what workers run and
-	// what a resume re-sends.
-	if envName := strings.TrimSpace(req.Conf.Env); envName != "" {
-		if e, err := oc.auth.Store().GetEnv(envName); err == nil && e != nil {
-			applyEnv(&conf, e.Vars)
-		}
-	}
+	// keep the raw conf ({{tokens}} intact) so a resume can re-apply whatever env
+	// is active then; send the active env's substitution to the workers now.
+	raw := confFromReq(req.Conf)
+	conf := confWithEnv(raw, oc.envVars(oc.activeEnv()))
 	requested := req.Conf.Concurrence
 
 	oc.mu.Lock()
@@ -506,7 +560,7 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 		wk.command(startCommand(name, conf, take))
 		fmt.Printf("assign %d to worker %s (job %s)\n", take, wk.name, name)
 	}
-	oc.jobs[name] = &job{name: name, conf: conf, assignments: alloc}
+	oc.jobs[name] = &job{name: name, conf: conf, rawConf: raw, assignments: alloc}
 	oc.mu.Unlock()
 
 	tshttp.WriteSuccess(&w, nil, nil)
@@ -606,11 +660,15 @@ func (oc *Ocean) Resume(w http.ResponseWriter, r *http.Request) {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 404, Message: "service not found"})
 		return
 	}
+	// re-apply the current active env to the raw conf so continue always runs
+	// with the latest selected environment.
+	conf := confWithEnv(j.rawConf, oc.envVars(oc.activeEnv()))
 	for id, take := range j.assignments {
 		if wk := oc.workers[id]; wk != nil {
-			wk.command(startCommand(j.name, j.conf, take))
+			wk.command(startCommand(j.name, conf, take))
 		}
 	}
+	j.conf = conf
 	j.paused = false
 	oc.mu.Unlock()
 

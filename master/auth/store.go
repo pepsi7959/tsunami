@@ -95,6 +95,10 @@ CREATE TABLE IF NOT EXISTS envs (
   vars       TEXT NOT NULL DEFAULT '{}',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS app_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
 );`)
 	return err
 }

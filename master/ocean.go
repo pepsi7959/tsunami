@@ -44,7 +44,8 @@ type attachedWorker struct {
 // job is a running load test owned by this ocean.
 type job struct {
 	name        string
-	conf        tshttp.Conf
+	conf        tshttp.Conf    // effective conf sent to workers (env {{vars}} substituted)
+	rawConf     tshttp.Conf    // original conf with {{tokens}} intact, for re-applying an env on resume
 	assignments map[string]int // workerID -> concurrency
 	paused      bool           // traffic halted but capacity still reserved
 }
@@ -224,6 +225,7 @@ func main() {
 	app.AddAPI(APIVersion+"/envs", oc.GetEnvs)
 	app.AddAPI(APIVersion+"/env", oc.SaveEnv)
 	app.AddAPI(APIVersion+"/env-delete", oc.DeleteEnv)
+	app.AddAPI(APIVersion+"/env-active", oc.SetActiveEnv)
 	app.Use(oc.auth.Middleware) // gate all routes except /login (+ CORS/preflight)
 	log.Println("HTTP API:", oc.viper.GetString("endpoints.http"))
 	app.Run()

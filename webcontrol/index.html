@@ -327,7 +327,7 @@
   <h1>Tsunami — Web Control</h1>
   <div class="master">
     <span class="envbar">
-      <select id="envSel" title="Active environment — its {{vars}} are filled into the request when you start a test"><option value="">— none —</option></select>
+      <select id="envSel" onchange="setActiveEnv()" title="Active environment — its {{vars}} are filled into the request whenever you start or continue a test"><option value="">— none —</option></select>
       <button class="iconbtn plain" onclick="openEnvEditor($('envSel').value)" title="Edit the selected environment (or create a new one)" aria-label="Manage environments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     </span>
     <span class="btn-sep"></span>
@@ -837,9 +837,8 @@ async function startTest(){
   const headers=parseHeaders($('headers').value);        // worker defaults Content-Type for POST/PUT/PATCH if unset
   if(Object.keys(headers).length) conf.headers=headers;
   conf.verbose = $('verbose').checked;                    // worker records the last request/response for this job
-  const env=$('envSel') && $('envSel').value; if(env) conf.env=env;   // ocean fills its {{vars}} at start
   try{
-    const r=await call('/api/v1/start','start',conf);
+    const r=await call('/api/v1/start','start',conf);      // ocean applies the active env's {{vars}}
     if(r.error && r.error.code){ toast('Start failed', r.error.message, 'error'); logline('start failed', r); return; }
     logline('start → '+name, r);
     samples=[]; prev=null; renderAll();
@@ -912,7 +911,6 @@ async function startBookmark(name){
   if(bm.body) conf.body=bm.body;
   if(bm.headers && Object.keys(bm.headers).length) conf.headers=bm.headers;
   conf.verbose=!!bm.verbose;
-  const env=$('envSel') && $('envSel').value; if(env) conf.env=env;   // apply the selected env to saved-test runs too
   try{
     await loadInfo(true);
     const running=[...$('mname').options].map(o=>o.value).filter(Boolean);
@@ -929,22 +927,32 @@ async function startBookmark(name){
 function headersToText(h){ return Object.entries(h||{}).map(([k,v])=>k+': '+v).join('\n'); }
 
 /* ---------- environments (shared {{var}} presets) ---------- */
-let envs=[];
+let envs=[]; let activeEnv='';
 async function loadEnvs(){
   try{
     const r=await call('/api/v1/envs','envs');
-    let arr=[]; try{ arr=JSON.parse((r.data||{}).envs||'[]'); }catch(e){}
+    const d=r.data||{};
+    let arr=[]; try{ arr=JSON.parse(d.envs||'[]'); }catch(e){}
     envs=Array.isArray(arr)?arr:[];
+    activeEnv=d.active||'';   // server is the source of truth for the active env
     renderEnvs(); populateEnvSelect();
   }catch(e){}
 }
 function populateEnvSelect(){
   const sel=$('envSel'); if(!sel) return;
-  const cur=sel.value;
   sel.innerHTML='';
   const none=document.createElement('option'); none.value=''; none.textContent='— none —'; sel.appendChild(none);
   envs.forEach(e=>{ const o=document.createElement('option'); o.value=e.name; o.textContent=e.name; sel.appendChild(o); });
-  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
+  sel.value=[...sel.options].some(o=>o.value===activeEnv)?activeEnv:'';
+}
+// persist the active env server-side; start/continue always apply it
+async function setActiveEnv(){
+  const name=$('envSel').value; activeEnv=name;
+  try{
+    await call('/api/v1/env-active','env-active',{name});
+    logline('active env → '+(name||'(none)'));
+    toast('Active environment', name?`“${name}” is now active — applied when you start or continue a test.`:'No active environment.', 'info');
+  }catch(e){ toast('Could not set active env', e.message||'error', 'error'); }
 }
 function renderEnvs(){
   const list=$('envList'); if(!list) return;
