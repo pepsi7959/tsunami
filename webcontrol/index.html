@@ -1033,7 +1033,7 @@ async function saveEditBookmark(){
 // success-latency histogram buckets — MUST match worker latencyBucketBoundsMs.
 // LAT_BOUNDS = inclusive upper bounds (ms); there is one extra overflow bucket (>last).
 const LAT_BOUNDS = [1,2,5,10,25,50,100,250,500,1000,2500,5000];
-const LAT_LABELS = ['≤1','≤2','≤5','≤10','≤25','≤50','≤100','≤250','≤500','≤1k','≤2.5k','≤5k','>5k'];
+const LAT_LABELS = ['≤1ms','≤2ms','≤5ms','≤10ms','≤25ms','≤50ms','≤100ms','≤250ms','≤500ms','≤1s','≤2.5s','≤5s','>5s'];
 let prevBuckets = null;   // previous cumulative snapshot; diffed for per-interval histograms
 
 // percentile from a per-interval histogram (interpolated within the bucket)
@@ -1343,7 +1343,7 @@ function repHeat(pts){
     if(op>0) cells+=`<rect x="${(L+ci*cw).toFixed(1)}" y="${(T+row*rh).toFixed(1)}" width="${(cw+0.6).toFixed(1)}" height="${(rh+0.6).toFixed(1)}" fill="var(--c-lat)" fill-opacity="${op.toFixed(3)}"/>`; } });
   let ax='';
   for(let bi=0;bi<nB;bi++){ if(bi%2!==0 && bi!==nB-1) continue; const row=nB-1-bi, y=(T+row*rh+rh/2+3).toFixed(1);
-    ax+=`<text x="${L-8}" y="${y}" text-anchor="end" class="rc-ax">${LAT_LABELS[bi]}ms</text>`; }
+    ax+=`<text x="${L-8}" y="${y}" text-anchor="end" class="rc-ax">${LAT_LABELS[bi]}</text>`; }
   const span=(P[P.length-1].t-P[0].t)||1, xd=span>=20?0:span>=4?1:2;
   [0,.5,1].forEach(f=>{ const ci=Math.round((P.length-1)*f), x=(L+ci*cw+cw/2).toFixed(1), a=f===0?'start':f===1?'end':'middle';
     ax+=`<text x="${x}" y="${H-7}" text-anchor="${a}" class="rc-ax">${fmtElapsed(P[ci].t,xd)}</text>`; });
@@ -1654,7 +1654,7 @@ function renderHeatmap(){
   });
   for(let bi=0;bi<nB;bi++){ if(bi%2!==0 && bi!==nB-1) continue;   // label every other row
     const row=nB-1-bi, y=(P.t+row*rh+rh/2+3).toFixed(1);
-    const tx=svgEl('text',{x:P.l-8,y,'text-anchor':'end',class:'axis-label'}); tx.textContent=LAT_LABELS[bi]+'ms'; frag.appendChild(tx);
+    const tx=svgEl('text',{x:P.l-8,y,'text-anchor':'end',class:'axis-label'}); tx.textContent=LAT_LABELS[bi]; frag.appendChild(tx);
   }
   const span=(pts[pts.length-1].t-pts[0].t)||1, xd=span>=20?0:span>=4?1:2;
   [0,.5,1].forEach(f=>{ const ci=Math.round((pts.length-1)*f), x=(P.l+ci*cw+cw/2).toFixed(1);
@@ -1666,7 +1666,7 @@ function renderHeatmap(){
     if(ci<0||ci>=pts.length||row<0||row>=nB){ tt.style.opacity=0; return; }
     const bi=nB-1-row, s=pts[ci], c=(s.hist||[])[bi]||0;
     tt.style.opacity=1; tt.style.left=(px/W*rect.width)+'px'; tt.style.top=(py/H*rect.height)+'px';
-    tt.innerHTML=`<div class="tt-t">t + ${fmtElapsed(s.t,0)} · ${LAT_LABELS[bi]}ms</div><div class="tt-v">${c} req</div>`;
+    tt.innerHTML=`<div class="tt-t">t + ${fmtElapsed(s.t,0)} · ${LAT_LABELS[bi]}</div><div class="tt-v">${c} req</div>`;
   };
   svg.onpointerleave=()=>{ tt.style.opacity=0; };
 }
