@@ -285,7 +285,8 @@
   details[open] summary::before { content:'▾ '; }
   details[open] summary { margin-bottom:12px; }
   pre#log { background: var(--plane); border:1px solid var(--border); border-radius:8px; padding:9px;
-    font-size:11px; color:var(--muted); overflow:auto; max-height:140px; margin:0; }
+    font-size:11px; color:var(--muted); overflow:auto; max-height:140px; margin:0;
+    white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; max-width:100%; }
 
   /* topology visualizer */
   svg.topo { display:block; width:100%; height:400px; }
