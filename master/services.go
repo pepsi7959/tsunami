@@ -62,6 +62,21 @@ func confFromReq(c tshttp.CmdConf) tshttp.Conf {
 	}
 }
 
+// confFromBookmark builds a load-test conf from a saved test (bookmark). The
+// bookmark holds the raw template ({{tokens}} intact), so an env can still be
+// applied on top when the job (re)starts.
+func confFromBookmark(b *tsauth.Bookmark) tshttp.Conf {
+	return tshttp.Conf{
+		Name:        b.Name,
+		URL:         b.URL,
+		Method:      b.Method,
+		Headers:     b.Headers,
+		Body:        b.Body,
+		Concurrence: b.Concurrence,
+		Verbose:     b.Verbose,
+	}
+}
+
 func startCommand(name string, conf tshttp.Conf, take int) *tsgrpc.OceanMessage {
 	return &tsgrpc.OceanMessage{Msg: &tsgrpc.OceanMessage_Command{Command: &tsgrpc.Command{
 		Action: tsgrpc.Action_START,
@@ -309,12 +324,12 @@ func (oc *Ocean) SaveBookmark(w http.ResponseWriter, r *http.Request) {
 	if c.URL == "" {
 		oc.mu.Lock()
 		if j := oc.jobs[c.Name]; j != nil {
-			c.URL = j.conf.URL
-			c.Method = j.conf.Method
-			c.Concurrence = j.conf.Concurrence
-			c.Body = j.conf.Body
-			c.Headers = j.conf.Headers
-			c.Verbose = j.conf.Verbose
+			c.URL = j.rawConf.URL
+			c.Method = j.rawConf.Method
+			c.Concurrence = j.rawConf.Concurrence
+			c.Body = j.rawConf.Body
+			c.Headers = j.rawConf.Headers
+			c.Verbose = j.rawConf.Verbose
 		}
 		oc.mu.Unlock()
 	}
@@ -357,6 +372,168 @@ func (oc *Ocean) DeleteBookmark(w http.ResponseWriter, r *http.Request) {
 	tshttp.WriteSuccess(&w, nil, nil)
 }
 
+// --- environment presets (shared {{var}} sets) ---
+
+// GetEnvs returns all environments as a JSON string in data.envs.
+func (oc *Ocean) GetEnvs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	list, err := oc.auth.Store().ListEnvs()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not read envs"})
+		return
+	}
+	b, _ := json.Marshal(list)
+	active, _ := oc.auth.Store().GetSetting("active_env")
+	data := map[string]string{"envs": string(b), "active": active}
+	tshttp.WriteSuccess(&w, &data, nil)
+}
+
+// SetActiveEnv persists the active environment applied by every start and
+// resume, so the choice is shared and survives reloads / multiple clients.
+func (oc *Ocean) SetActiveEnv(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	if err := oc.auth.Store().SetSetting("active_env", strings.TrimSpace(req.Conf.Name)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not set active env"})
+		return
+	}
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// SaveEnv upserts an environment (name + variable map).
+func (oc *Ocean) SaveEnv(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req struct {
+		Conf struct {
+			Name string            `json:"name"`
+			Vars map[string]string `json:"vars"`
+		} `json:"conf"`
+	}
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	name := strings.TrimSpace(req.Conf.Name)
+	if name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 400, Message: "env name is required"})
+		return
+	}
+	if err := oc.auth.Store().SaveEnv(&tsauth.Env{Name: name, Vars: req.Conf.Vars}); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not save env"})
+		return
+	}
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// DeleteEnv removes an environment.
+func (oc *Ocean) DeleteEnv(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	if req.Conf.Name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 400, Message: "name is required"})
+		return
+	}
+	if err := oc.auth.Store().DeleteEnv(req.Conf.Name); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not delete env"})
+		return
+	}
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// applyEnv substitutes {{key}} tokens in the URL, path, body and header values
+// with the environment's variable values. Unknown {{...}} tokens are left intact
+// so the worker's per-request generators ({{uuid}}, {{seq}}, ...) still expand.
+func applyEnv(conf *tshttp.Conf, vars map[string]string) {
+	if len(vars) == 0 {
+		return
+	}
+	rep := func(s string) string {
+		if s == "" {
+			return s
+		}
+		for k, v := range vars {
+			s = strings.ReplaceAll(s, "{{"+k+"}}", v)
+		}
+		return s
+	}
+	conf.URL = rep(conf.URL)
+	conf.Path = rep(conf.Path)
+	conf.Body = rep(conf.Body)
+	for k, v := range conf.Headers {
+		conf.Headers[k] = rep(v)
+	}
+}
+
+// activeEnv returns the currently-selected environment name (persisted server
+// side so start/resume always apply the same active env, for every client).
+func (oc *Ocean) activeEnv() string {
+	v, _ := oc.auth.Store().GetSetting("active_env")
+	return v
+}
+
+// envVars returns the variable map for a named environment, or nil if the name
+// is empty or the environment does not exist.
+func (oc *Ocean) envVars(name string) map[string]string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	if e, err := oc.auth.Store().GetEnv(name); err == nil && e != nil {
+		return e.Vars
+	}
+	return nil
+}
+
+// confWithEnv returns a copy of conf (cloning the headers map so the caller's
+// original is left untouched) with the environment's {{vars}} substituted. The
+// untouched original keeps its {{tokens}}, so a different env can be applied
+// later when a paused test is resumed.
+func confWithEnv(conf tshttp.Conf, vars map[string]string) tshttp.Conf {
+	out := conf
+	if conf.Headers != nil {
+		h := make(map[string]string, len(conf.Headers))
+		for k, v := range conf.Headers {
+			h[k] = v
+		}
+		out.Headers = h
+	}
+	applyEnv(&out, vars)
+	return out
+}
+
 // Start splits a load test across attached workers (reject if capacity short).
 func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
@@ -369,7 +546,10 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := req.Conf.Name
-	conf := confFromReq(req.Conf)
+	// keep the raw conf ({{tokens}} intact) so a resume can re-apply whatever env
+	// is active then; send the active env's substitution to the workers now.
+	raw := confFromReq(req.Conf)
+	conf := confWithEnv(raw, oc.envVars(oc.activeEnv()))
 	requested := req.Conf.Concurrence
 
 	oc.mu.Lock()
@@ -395,7 +575,7 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 		wk.command(startCommand(name, conf, take))
 		fmt.Printf("assign %d to worker %s (job %s)\n", take, wk.name, name)
 	}
-	oc.jobs[name] = &job{name: name, conf: conf, assignments: alloc}
+	oc.jobs[name] = &job{name: name, conf: conf, rawConf: raw, assignments: alloc}
 	oc.mu.Unlock()
 
 	tshttp.WriteSuccess(&w, nil, nil)
@@ -495,11 +675,60 @@ func (oc *Ocean) Resume(w http.ResponseWriter, r *http.Request) {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 404, Message: "service not found"})
 		return
 	}
-	for id, take := range j.assignments {
-		if wk := oc.workers[id]; wk != nil {
-			wk.command(startCommand(j.name, j.conf, take))
+	// pull the latest config from a same-named saved test if one exists, so an
+	// edit to that bookmark (URL/body/headers/concurrency) takes effect on
+	// continue; otherwise reuse the config the job started with. Then re-apply
+	// the current active env.
+	raw := j.rawConf
+	if bm, err := oc.auth.Store().GetBookmark(name); err == nil && bm != nil {
+		raw = confFromBookmark(bm)
+	}
+	conf := confWithEnv(raw, oc.envVars(oc.activeEnv()))
+
+	// re-allocate worker slots if the edited concurrency differs from what the
+	// job currently holds.
+	assignments := j.assignments
+	requested := raw.Concurrence
+	cur := 0
+	for _, take := range j.assignments {
+		cur += take
+	}
+	if requested > 0 && requested != cur {
+		for id, take := range j.assignments { // release the held reservation
+			if wk := oc.workers[id]; wk != nil {
+				wk.used -= take
+				if wk.used < 0 {
+					wk.used = 0
+				}
+			}
+		}
+		alloc, ok := oc.allocate(requested)
+		if !ok { // restore the reservation and report — the test stays paused
+			for id, take := range j.assignments {
+				if wk := oc.workers[id]; wk != nil {
+					wk.used += take
+				}
+			}
+			oc.mu.Unlock()
+			tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 503, Message: "insufficient worker capacity for the edited concurrency"})
+			return
+		}
+		assignments = alloc
+		for id, take := range alloc { // reserve the new allocation (allocate only plans)
+			if wk := oc.workers[id]; wk != nil {
+				wk.used += take
+			}
 		}
 	}
+
+	for id, take := range assignments {
+		if wk := oc.workers[id]; wk != nil {
+			wk.command(startCommand(j.name, conf, take))
+		}
+	}
+	j.assignments = assignments
+	j.conf = conf
+	j.rawConf = raw
 	j.paused = false
 	oc.mu.Unlock()
 

@@ -102,6 +102,11 @@
     background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
     padding: 6px 9px; border-radius: 7px; width: 200px; font-size: 13px;
   }
+  header .envbar { display:inline-flex; align-items:center; gap:6px; }
+  header .envbar select {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
+    padding: 6px 9px; border-radius: 7px; font-size: 13px; max-width: 180px;
+  }
   .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--muted); margin-right:6px; }
   .dot.ok { background: var(--good); } .dot.bad { background: var(--s-crit); }
 
@@ -279,6 +284,12 @@
   .edit-chk { display:flex !important; align-items:center; gap:8px; color:var(--ink-2); font-weight:500 !important; margin-top:14px; }
   .edit-chk input { width:auto; }
   .modal-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+  /* environment variable rows (env editor) */
+  .env-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .env-row input { flex:1; min-width:0; }
+  .env-row .env-k { flex:0 0 36%; font-family:var(--mono, monospace); }
+  .env-row .env-del { flex:none; width:32px; height:32px; }
+  #envVars { margin-top:2px; }
   details summary { cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.9px; color:var(--muted); font-weight:650; list-style:none; }
   details summary::-webkit-details-marker { display:none; }
   details summary::before { content:'▸ '; }
@@ -315,6 +326,11 @@
   <span class="brandmark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c2 0 2 1.6 4 1.6S8 7 10 7s2 1.6 4 1.6S16 7 18 7s2 1.6 4 1.6"/><path d="M2 12c2 0 2 1.6 4 1.6S8 12 10 12s2 1.6 4 1.6S16 12 18 12s2 1.6 4 1.6"/><path d="M2 17c2 0 2 1.6 4 1.6S8 17 10 17s2 1.6 4 1.6S16 17 18 17s2 1.6 4 1.6"/></svg></span>
   <h1>Tsunami — Web Control</h1>
   <div class="master">
+    <span class="envbar">
+      <select id="envSel" onchange="setActiveEnv()" title="Active environment — its {{vars}} are filled into the request whenever you start or continue a test"><option value="">— none —</option></select>
+      <button class="iconbtn plain" onclick="openEnvEditor($('envSel').value)" title="Edit the selected environment (or create a new one)" aria-label="Manage environments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    </span>
+    <span class="btn-sep"></span>
     <span id="conn"><span class="dot"></span>connecting…</span>
     <span>Master: <input id="master" value="http://localhost:8080" /></span>
     <button id="themeBtn" class="iconbtn" onclick="toggleTheme()" title="Toggle light / dark" aria-label="Toggle theme">
@@ -373,6 +389,28 @@
     <div class="modal-foot">
       <button class="ghost" onclick="closeEditBookmark()">Cancel</button>
       <button class="start" onclick="saveEditBookmark()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- environment editor modal -->
+<div id="envModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <b>Environment — <span id="env_title">new</span></b>
+      <button class="iconbtn plain" onclick="closeEnvEditor()" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <label for="env_name">Name</label>
+    <input id="env_name" type="text" placeholder="develop" />
+    <label>Variables — reference as <code>{{name}}</code> in URL, headers &amp; body</label>
+    <div id="envVars"></div>
+    <button class="ghost mini" type="button" onclick="addEnvRow()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>Add variable</span></button>
+    <div class="modal-foot" style="justify-content:space-between">
+      <button class="tonal" id="envDeleteBtn" type="button" onclick="deleteEnvFromEditor()">Delete</button>
+      <span style="display:flex; gap:10px">
+        <button class="ghost" onclick="closeEnvEditor()">Cancel</button>
+        <button class="start" onclick="saveEnvEditor()">Save</button>
+      </span>
     </div>
   </div>
 </div>
@@ -794,7 +832,7 @@ async function startTest(){
   if(Object.keys(headers).length) conf.headers=headers;
   conf.verbose = $('verbose').checked;                    // worker records the last request/response for this job
   try{
-    const r=await call('/api/v1/start','start',conf);
+    const r=await call('/api/v1/start','start',conf);      // ocean applies the active env's {{vars}}
     if(r.error && r.error.code){ toast('Start failed', r.error.message, 'error'); logline('start failed', r); return; }
     logline('start → '+name, r);
     samples=[]; prev=null; renderAll();
@@ -881,6 +919,90 @@ async function startBookmark(name){
   }catch(e){ toast('Start failed', e.message||'error', 'error'); }
 }
 function headersToText(h){ return Object.entries(h||{}).map(([k,v])=>k+': '+v).join('\n'); }
+
+/* ---------- environments (shared {{var}} presets) ---------- */
+let envs=[]; let activeEnv='';
+async function loadEnvs(){
+  try{
+    const r=await call('/api/v1/envs','envs');
+    const d=r.data||{};
+    let arr=[]; try{ arr=JSON.parse(d.envs||'[]'); }catch(e){}
+    envs=Array.isArray(arr)?arr:[];
+    activeEnv=d.active||'';   // server is the source of truth for the active env
+    populateEnvSelect();
+  }catch(e){}
+}
+function populateEnvSelect(){
+  const sel=$('envSel'); if(!sel) return;
+  sel.innerHTML='';
+  const none=document.createElement('option'); none.value=''; none.textContent='— none —'; sel.appendChild(none);
+  envs.forEach(e=>{ const o=document.createElement('option'); o.value=e.name; o.textContent=e.name; sel.appendChild(o); });
+  sel.value=[...sel.options].some(o=>o.value===activeEnv)?activeEnv:'';
+}
+// persist the active env server-side; start/continue always apply it
+async function setActiveEnv(){
+  const name=$('envSel').value; activeEnv=name;
+  try{
+    await call('/api/v1/env-active','env-active',{name});
+    logline('active env → '+(name||'(none)'));
+    toast('Active environment', name?`“${name}” is now active — applied when you start or continue a test.`:'No active environment.', 'info');
+  }catch(e){ toast('Could not set active env', e.message||'error', 'error'); }
+}
+function addEnvRow(k='',v=''){
+  const wrap=$('envVars'); if(!wrap) return;
+  const row=document.createElement('div'); row.className='env-row';
+  const ik=document.createElement('input'); ik.className='env-k'; ik.placeholder='name'; ik.value=k;
+  const iv=document.createElement('input'); iv.className='env-v'; iv.placeholder='value'; iv.value=v;
+  const del=document.createElement('button'); del.type='button'; del.className='iconbtn plain env-del'; del.title='Remove';
+  del.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  del.onclick=()=>row.remove();
+  row.appendChild(ik); row.appendChild(iv); row.appendChild(del);
+  wrap.appendChild(row);
+}
+function openEnvEditor(name){
+  const e=(typeof name==='string')?envs.find(x=>x.name===name):null;
+  $('env_title').textContent=e?e.name:'new';
+  $('env_name').value=e?e.name:'';
+  $('env_name').dataset.orig=e?e.name:'';
+  const wrap=$('envVars'); wrap.innerHTML='';
+  const entries=e?Object.entries(e.vars||{}):[];
+  if(entries.length) entries.forEach(([k,v])=>addEnvRow(k,v)); else { addEnvRow(); addEnvRow(); }
+  $('envDeleteBtn').style.display = e ? '' : 'none';   // Delete only when editing an existing env
+  $('envModal').classList.remove('hidden');
+}
+function closeEnvEditor(){ $('envModal').classList.add('hidden'); }
+async function deleteEnvFromEditor(){
+  const orig=$('env_name').dataset.orig;
+  if(!orig){ closeEnvEditor(); return; }
+  await deleteEnv(orig);
+  closeEnvEditor();
+}
+async function saveEnvEditor(){
+  const name=$('env_name').value.trim();
+  if(!name){ toast('Name required','Give the environment a name.','warn'); return; }
+  const vars={};
+  $('envVars').querySelectorAll('.env-row').forEach(row=>{
+    const k=row.querySelector('.env-k').value.trim();
+    if(k) vars[k]=row.querySelector('.env-v').value;
+  });
+  try{
+    const r=await call('/api/v1/env','env',{name, vars});
+    if(r.error && r.error.code){ toast('Save failed', r.error.message, 'error'); return; }
+    const orig=$('env_name').dataset.orig;
+    if(orig && orig!==name){ try{ await call('/api/v1/env-delete','env-delete',{name:orig}); }catch(_){} }  // renamed → drop the old row
+    closeEnvEditor(); await loadEnvs();
+    toast('Environment saved', `“${name}” saved with ${Object.keys(vars).length} variable(s).`, 'ok');
+  }catch(e){ toast('Save failed', e.message||'error', 'error'); }
+}
+async function deleteEnv(name){
+  try{
+    await call('/api/v1/env-delete','env-delete',{name});
+    if(name===activeEnv){ try{ await call('/api/v1/env-active','env-active',{name:''}); }catch(_){} }  // was active → clear
+    await loadEnvs();
+    toast('Environment deleted', `“${name}” removed.`, 'info');
+  }catch(e){ toast('Delete failed', e.message||'error', 'error'); }
+}
+
 function openEditBookmark(name){
   const bm=bookmarks.find(b=>b.name===name); if(!bm) return;
   $('edit_name').textContent=bm.name;
@@ -1818,7 +1940,7 @@ function hideLogin(){ $('loginScreen').classList.add('hidden'); }
 function enterApp(email){
   hideLogin();
   $('userEmail').textContent=email||''; $('userchip').classList.remove('hidden');
-  if(!appStarted){ appStarted=true; loadBookmarks().then(()=>loadInfo()); if($('autopoll').checked) startPoll(); }
+  if(!appStarted){ appStarted=true; loadBookmarks().then(()=>loadInfo()); loadEnvs(); if($('autopoll').checked) startPoll(); }
 }
 // called by call() on any 401, and on logout
 function onUnauthorized(){
