@@ -612,6 +612,7 @@ let pollTimer = null;
 let samples = [];        // {t, rps, avg, min, max, req, err, rate, wrk}
 let prev = null;         // previous raw {req, err, t} for instantaneous deltas
 let watchedName = null;  // the test the chart buffer currently belongs to
+let pausedNames = new Set(); // tests currently paused — their charts freeze (hold last data)
 let tick = 0;            // poll counter — used to refresh the running-tests list periodically
 const MAX_SAMPLES = 150;
 const ROLL = 8;          // trailing window (samples) for the latency range band
@@ -659,8 +660,8 @@ async function loadInfo(quiet){
     let topo=null;
     if(d.topology){ try{ topo=JSON.parse(d.topology); renderTopo(topo); }catch(err){} }
     const names=(d.jobs||'').split(',').map(s=>s.trim()).filter(Boolean);
-    const paused=new Set((d.paused_jobs||'').split(',').map(s=>s.trim()).filter(Boolean));
-    renderRunning(names, topo, paused);
+    pausedNames = new Set((d.paused_jobs||'').split(',').map(s=>s.trim()).filter(Boolean));
+    renderRunning(names, topo, pausedNames);
     renderBookmarks();   // keep saved-list Start buttons in sync with what's running
     if(!quiet) logline('info ok', d);
   }catch(e){ setConn(false); if(!quiet) logline('info failed: '+e.message); }
@@ -753,22 +754,23 @@ async function stopNamed(name){
   }catch(e){ setConn(false); toast('Stop failed', e.message, 'error'); }
 }
 async function pauseTest(name){
+  pausedNames.add(name);   // freeze right away so no in-flight poll appends past the pause point
   try{
     const r=await call('/api/v1/pause','pause',{name});
-    if(r.error && r.error.code){ toast('Pause failed', r.error.message, 'error'); return; }
+    if(r.error && r.error.code){ pausedNames.delete(name); toast('Pause failed', r.error.message, 'error'); return; }
     logline('pause → '+name, r);
-    toast('Test paused', `“${name}” paused — concurrency held; stats reset.`, 'ok');
-    if(name===$('mname').value){ samples=[]; prev=null; watchedName=null; renderAll(); }  // reset graphs
+    toast('Test paused', `“${name}” paused — graphs frozen at the last data. Press Report to capture it.`, 'ok');
     loadInfo();
-  }catch(e){ setConn(false); toast('Pause failed', e.message, 'error'); }
+  }catch(e){ pausedNames.delete(name); setConn(false); toast('Pause failed', e.message, 'error'); }
 }
 async function resumeTest(name){
   try{
     const r=await call('/api/v1/resume','resume',{name});
     if(r.error && r.error.code){ toast('Continue failed', r.error.message, 'error'); return; }
     logline('resume → '+name, r);
+    pausedNames.delete(name);
+    if(name===$('mname').value){ samples=[]; prev=null; prevBuckets=null; watchedName=null; renderAll(); }  // fresh start (worker restarts at 0)
     toast('Test resumed', `“${name}” resumed.`, 'ok');
-    if(name===$('mname').value){ samples=[]; prev=null; watchedName=null; renderAll(); }  // fresh start
     loadInfo();
   }catch(e){ setConn(false); toast('Continue failed', e.message, 'error'); }
 }
@@ -936,6 +938,9 @@ async function loadMetrics(){
   // watched test changed (manual pick or auto-switch after a stop) → start a fresh
   // buffer so the charts never mix two tests' timelines (was the "distortion" bug)
   if(name!==watchedName){ watchedName=name; samples=[]; prev=null; prevBuckets=null; renderAll(); }
+  // paused → freeze: hold the current buffer on screen and stop appending, so the
+  // frozen charts (and a Report generated from them) show the data at the pause point
+  if(pausedNames.has(name)) return;
   loadSample(name);   // verbose panel (no-op / hidden if the job isn't verbose)
   try{
     const r=await call('/api/v1/metrics','metrics',{name});
@@ -1274,9 +1279,6 @@ async function generateReport(name){
     const rq=+d.RequestCount||0, ec=+d.error_count||0;
     src={ rps:+d.rps||0, req:rq, avg:+d.avg||0, min:+d.min||0, max:+d.max||0,
           err:ec, rate: rq>0?ec/rq*100:0, wrk:+d.workerCount||0, t:+d.ElapedTime||0 };
-    // snapshot has no per-interval buffer, so derive percentiles from the cumulative histogram
-    let hb=[]; try{ hb=JSON.parse(d.buckets||'[]').map(Number); }catch(_){}
-    src.p50=pctlFromHist(hb,0.50); src.p95=pctlFromHist(hb,0.95); src.p99=pctlFromHist(hb,0.99);
   }
 
   // cluster topology (per-test target + the diagram below)
@@ -1302,8 +1304,7 @@ async function generateReport(name){
 
   // frozen KPI values (mirror the dashboard tiles 1:1)
   const rps=+src.rps||0, requests=+src.req||0, errors=+src.err||0, duration=+src.t||0,
-        workers=+src.wrk||0, avgLat=+src.avg||0, minLat=+src.min||0, maxLat=+src.max||0,
-        p95Lat=+src.p95||0, p99Lat=+src.p99||0;
+        workers=+src.wrk||0, avgLat=+src.avg||0, minLat=+src.min||0, maxLat=+src.max||0;
   const errRate = requests>0 ? errors/requests*100 : 0;   // overall — drives the tile + verdict
 
   const verdict = errRate<1 ? {cls:'pass',label:'PASSED', note:'Error rate under 1% — the target held up under load.'}
@@ -1437,8 +1438,6 @@ ${ (topo.nodes&&topo.nodes.length) ? `
   ${kpi('Error rate', (errRate>=10?Math.round(errRate):errRate.toFixed(2)),'%')}
   ${kpi('Min latency', minLat.toFixed(1),'ms')}
   ${kpi('Max latency', maxLat.toFixed(1),'ms')}
-  ${kpi('p95 latency', p95Lat.toFixed(1),'ms')}
-  ${kpi('p99 latency', p99Lat.toFixed(1),'ms')}
   ${kpi('Workers', workers)}
   ${kpi('Elapsed', Math.round(duration),'s')}
  </div>
