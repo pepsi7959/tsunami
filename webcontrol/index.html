@@ -1447,11 +1447,12 @@ function renderHeatmap(){
   const plotW=W-P.l-P.r, plotH=H-P.t-P.b, cw=plotW/pts.length, rh=plotH/nB;
   let maxC=1; pts.forEach(s=>(s.hist||[]).forEach(c=>{ if(c>maxC) maxC=c; }));
   const logMax=Math.log(maxC+1);
-  // warm heat ramp: amber (cooler) -> hot gold (busiest). density is double-encoded
-  // as hue AND opacity, so it reads on both themes (opacity blends with the surface)
-  // and doesn't rely on colour alone.
-  const heatColor=t=>{ const a=[217,119,6], b=[255,224,138];
-    return `rgb(${Math.round(a[0]+(b[0]-a[0])*t)},${Math.round(a[1]+(b[1]-a[1])*t)},${Math.round(a[2]+(b[2]-a[2])*t)})`; };
+  // fire heat ramp (color-hex palette #55783): red -> orange -> gold -> yellow,
+  // quiet -> busiest. density is double-encoded as hue AND opacity, so it reads on
+  // both themes (opacity blends with the surface) and doesn't rely on colour alone.
+  const HEAT=[[233,62,58],[237,104,60],[243,144,63],[253,199,12],[255,243,59]];
+  const heatColor=t=>{ const s=Math.max(0,Math.min(1,t))*(HEAT.length-1), i=Math.min(HEAT.length-2,Math.floor(s)), f=s-i, a=HEAT[i], b=HEAT[i+1];
+    return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`; };
   const frag=document.createDocumentFragment();
   pts.forEach((s,ci)=>{ const h=s.hist||[];
     for(let bi=0;bi<nB;bi++){ const c=h[bi]||0; const row=nB-1-bi;   // highest bucket on top
