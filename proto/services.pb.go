@@ -362,16 +362,20 @@ func (x *Register) GetMaxConcurrency() int32 {
 }
 
 type Metric struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Job           string                 `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
-	WorkerCount   int32                  `protobuf:"varint,2,opt,name=worker_count,json=workerCount,proto3" json:"worker_count,omitempty"`
-	RequestCount  int64                  `protobuf:"varint,3,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
-	ErrorCount    int64                  `protobuf:"varint,4,opt,name=error_count,json=errorCount,proto3" json:"error_count,omitempty"`
-	Avg           float64                `protobuf:"fixed64,5,opt,name=avg,proto3" json:"avg,omitempty"`
-	Min           float64                `protobuf:"fixed64,6,opt,name=min,proto3" json:"min,omitempty"`
-	Max           float64                `protobuf:"fixed64,7,opt,name=max,proto3" json:"max,omitempty"`
-	Rps           float64                `protobuf:"fixed64,8,opt,name=rps,proto3" json:"rps,omitempty"`
-	ElapsedTime   float64                `protobuf:"fixed64,9,opt,name=elapsed_time,json=elapsedTime,proto3" json:"elapsed_time,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Job          string                 `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
+	WorkerCount  int32                  `protobuf:"varint,2,opt,name=worker_count,json=workerCount,proto3" json:"worker_count,omitempty"`
+	RequestCount int64                  `protobuf:"varint,3,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
+	ErrorCount   int64                  `protobuf:"varint,4,opt,name=error_count,json=errorCount,proto3" json:"error_count,omitempty"`
+	Avg          float64                `protobuf:"fixed64,5,opt,name=avg,proto3" json:"avg,omitempty"`
+	Min          float64                `protobuf:"fixed64,6,opt,name=min,proto3" json:"min,omitempty"`
+	Max          float64                `protobuf:"fixed64,7,opt,name=max,proto3" json:"max,omitempty"`
+	Rps          float64                `protobuf:"fixed64,8,opt,name=rps,proto3" json:"rps,omitempty"`
+	ElapsedTime  float64                `protobuf:"fixed64,9,opt,name=elapsed_time,json=elapsedTime,proto3" json:"elapsed_time,omitempty"`
+	// cumulative success-latency histogram; bucket[i] = count with latency <=
+	// latencyBucketBoundsMs[i] (last bucket is the +Inf overflow). Consumers diff
+	// successive reports for per-interval percentiles + a latency heatmap.
+	Bucket        []int64 `protobuf:"varint,10,rep,packed,name=bucket,proto3" json:"bucket,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -467,6 +471,13 @@ func (x *Metric) GetElapsedTime() float64 {
 		return x.ElapsedTime
 	}
 	return 0
+}
+
+func (x *Metric) GetBucket() []int64 {
+	if x != nil {
+		return x.Bucket
+	}
+	return nil
 }
 
 // Sample is the last request/response a worker captured for a verbose job.
@@ -931,7 +942,7 @@ const file_services_proto_rawDesc = "" +
 	"\bRegister\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12'\n" +
-	"\x0fmax_concurrency\x18\x03 \x01(\x05R\x0emaxConcurrency\"\xee\x01\n" +
+	"\x0fmax_concurrency\x18\x03 \x01(\x05R\x0emaxConcurrency\"\x86\x02\n" +
 	"\x06Metric\x12\x10\n" +
 	"\x03job\x18\x01 \x01(\tR\x03job\x12!\n" +
 	"\fworker_count\x18\x02 \x01(\x05R\vworkerCount\x12#\n" +
@@ -942,7 +953,9 @@ const file_services_proto_rawDesc = "" +
 	"\x03min\x18\x06 \x01(\x01R\x03min\x12\x10\n" +
 	"\x03max\x18\a \x01(\x01R\x03max\x12\x10\n" +
 	"\x03rps\x18\b \x01(\x01R\x03rps\x12!\n" +
-	"\felapsed_time\x18\t \x01(\x01R\velapsedTime\"\xd8\x02\n" +
+	"\felapsed_time\x18\t \x01(\x01R\velapsedTime\x12\x16\n" +
+	"\x06bucket\x18\n" +
+	" \x03(\x03R\x06bucket\"\xd8\x02\n" +
 	"\x06Sample\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x129\n" +

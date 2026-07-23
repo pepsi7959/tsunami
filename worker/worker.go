@@ -13,6 +13,14 @@ type client interface {
 	do() (code int, msTaken uint64, err error)
 }
 
+// latencyBucketBoundsMs are the inclusive upper bounds (ms) of the
+// success-latency histogram. buckets[i] counts responses with latency in
+// (bounds[i-1], bounds[i]]; the extra final bucket is the >5000ms overflow.
+// Keep this in sync with the ocean + web control (heatmap axis + percentiles).
+var latencyBucketBoundsMs = []float64{1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}
+
+const nLatencyBuckets = 13 // len(latencyBucketBoundsMs) + 1 overflow
+
 // Stat holds one worker's counters. Each field is written only by that worker's
 // own request goroutine and read by the reporter goroutine, so all access is
 // atomic (single writer, single reader) to stay data-race free.
@@ -25,6 +33,7 @@ type Stat struct {
 	sumResTime int64 // sum of successful response times
 	minResTime int64
 	maxResTime int64
+	buckets    [nLatencyBuckets]int64 // success-latency histogram (per bucket)
 }
 
 //Worker structure
@@ -104,6 +113,25 @@ func (w *Worker) record(ok bool, resTime int64) {
 	if mx := atomic.LoadInt64(&w.stat.maxResTime); resTime > mx {
 		atomic.StoreInt64(&w.stat.maxResTime, resTime)
 	}
+	// histogram bucket (one atomic add — O(1) on the hot path)
+	ms := float64(resTime) / 1e6
+	bi := len(latencyBucketBoundsMs)
+	for i, b := range latencyBucketBoundsMs {
+		if ms <= b {
+			bi = i
+			break
+		}
+	}
+	atomic.AddInt64(&w.stat.buckets[bi], 1)
+}
+
+// GetBuckets returns a snapshot of the success-latency histogram (per bucket).
+func (w *Worker) GetBuckets() []int64 {
+	out := make([]int64, nLatencyBuckets)
+	for i := range out {
+		out[i] = atomic.LoadInt64(&w.stat.buckets[i])
+	}
+	return out
 }
 
 //Run invoke the worker

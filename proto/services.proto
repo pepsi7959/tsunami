@@ -56,6 +56,10 @@ message Metric {
   double max = 7;
   double rps = 8;
   double elapsed_time = 9;
+  // cumulative success-latency histogram; bucket[i] = count with latency <=
+  // latencyBucketBoundsMs[i] (last bucket is the +Inf overflow). Consumers diff
+  // successive reports for per-interval percentiles + a latency heatmap.
+  repeated int64 bucket = 10;
 }
 
 // Sample is the last request/response a worker captured for a verbose job.

@@ -528,6 +528,7 @@ func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	agg := tshttp.Metric{Name: name}
 	var avgWeighted, weight float64
+	var merged []int64 // fleet-merged latency histogram (per bucket)
 	for id := range j.assignments {
 		wk := oc.workers[id]
 		if wk == nil {
@@ -536,6 +537,12 @@ func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		m := wk.metrics[name]
 		if m == nil {
 			continue
+		}
+		for i, c := range m.GetBucket() {
+			for i >= len(merged) {
+				merged = append(merged, 0)
+			}
+			merged[i] += c
 		}
 		agg.WorkerCount += int(m.GetWorkerCount())
 		agg.RequestCount += int(m.GetRequestCount())
@@ -560,7 +567,12 @@ func (oc *Ocean) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	if weight > 0 {
 		agg.Avg = avgWeighted / weight
 	}
-	tshttp.WriteSuccess(&w, metricxToSlice(&agg), nil)
+	data := metricxToSlice(&agg)
+	// cumulative fleet histogram for the web control (per-interval percentiles +
+	// latency heatmap are derived client-side by diffing successive snapshots)
+	b, _ := json.Marshal(merged)
+	(*data)["buckets"] = string(b)
+	tshttp.WriteSuccess(&w, data, nil)
 }
 
 func metricxToSlice(m *tshttp.Metric) *map[string]string {
