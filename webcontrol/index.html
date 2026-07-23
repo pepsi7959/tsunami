@@ -279,6 +279,12 @@
   .edit-chk { display:flex !important; align-items:center; gap:8px; color:var(--ink-2); font-weight:500 !important; margin-top:14px; }
   .edit-chk input { width:auto; }
   .modal-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+  /* environment variable rows (env editor) */
+  .env-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .env-row input { flex:1; min-width:0; }
+  .env-row .env-k { flex:0 0 36%; font-family:var(--mono, monospace); }
+  .env-row .env-del { flex:none; width:32px; height:32px; }
+  #envVars { margin-top:2px; }
   details summary { cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.9px; color:var(--muted); font-weight:650; list-style:none; }
   details summary::-webkit-details-marker { display:none; }
   details summary::before { content:'▸ '; }
@@ -377,6 +383,25 @@
   </div>
 </div>
 
+<!-- environment editor modal -->
+<div id="envModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <b>Environment — <span id="env_title">new</span></b>
+      <button class="iconbtn plain" onclick="closeEnvEditor()" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <label for="env_name">Name</label>
+    <input id="env_name" type="text" placeholder="develop" />
+    <label>Variables — reference as <code>{{name}}</code> in URL, headers &amp; body</label>
+    <div id="envVars"></div>
+    <button class="ghost mini" type="button" onclick="addEnvRow()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>Add variable</span></button>
+    <div class="modal-foot">
+      <button class="ghost" onclick="closeEnvEditor()">Cancel</button>
+      <button class="start" onclick="saveEnvEditor()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="shell">
   <nav class="sidebar">
     <div class="navi active" data-page="dashboard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span> Dashboard</div>
@@ -409,6 +434,11 @@
         </div>
         <div><label>Concurrence</label><input id="concurrence" type="number" value="10" min="1" /></div>
       </div>
+      <div class="row" style="margin-top:2px; align-items:end">
+        <div style="flex:2"><label>Environment <span style="color:var(--muted)">— its {{vars}} are filled into URL / headers / body at start</span></label>
+          <select id="envSel"><option value="">— none —</option></select></div>
+        <div><button class="ghost" type="button" onclick="openEnvEditor()" style="width:100%">Manage envs</button></div>
+      </div>
       <label>Request body <span style="color:var(--muted)">— supports {{tokens}}, expanded per request</span></label>
       <textarea id="body" placeholder='{"email":"user{{seq}}@test.io","id":"{{uuid}}","age":{{randInt 18 65}}}'></textarea>
       <div class="chips" id="tplChips"></div>
@@ -435,6 +465,15 @@
       <h2 style="margin:0">Saved tests (<span id="bm_count">0</span>)</h2>
     </div>
     <div id="bookmarkList"></div>
+  </div>
+
+  <!-- environments: shared {{var}} presets, applied to a test at start -->
+  <div class="card">
+    <div class="toolbar" style="margin-bottom:12px; align-items:center">
+      <h2 style="margin:0">Environments (<span id="env_count">0</span>)</h2>
+      <button class="ghost mini" type="button" onclick="openEnvEditor()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>New</span></button>
+    </div>
+    <div id="envList"></div>
   </div>
 
   <!-- observe controls: what the charts below are showing -->
@@ -793,6 +832,7 @@ async function startTest(){
   const headers=parseHeaders($('headers').value);        // worker defaults Content-Type for POST/PUT/PATCH if unset
   if(Object.keys(headers).length) conf.headers=headers;
   conf.verbose = $('verbose').checked;                    // worker records the last request/response for this job
+  const env=$('envSel') && $('envSel').value; if(env) conf.env=env;   // ocean fills its {{vars}} at start
   try{
     const r=await call('/api/v1/start','start',conf);
     if(r.error && r.error.code){ toast('Start failed', r.error.message, 'error'); logline('start failed', r); return; }
@@ -867,6 +907,7 @@ async function startBookmark(name){
   if(bm.body) conf.body=bm.body;
   if(bm.headers && Object.keys(bm.headers).length) conf.headers=bm.headers;
   conf.verbose=!!bm.verbose;
+  const env=$('envSel') && $('envSel').value; if(env) conf.env=env;   // apply the selected env to saved-test runs too
   try{
     await loadInfo(true);
     const running=[...$('mname').options].map(o=>o.value).filter(Boolean);
@@ -881,6 +922,92 @@ async function startBookmark(name){
   }catch(e){ toast('Start failed', e.message||'error', 'error'); }
 }
 function headersToText(h){ return Object.entries(h||{}).map(([k,v])=>k+': '+v).join('\n'); }
+
+/* ---------- environments (shared {{var}} presets) ---------- */
+let envs=[];
+async function loadEnvs(){
+  try{
+    const r=await call('/api/v1/envs','envs');
+    let arr=[]; try{ arr=JSON.parse((r.data||{}).envs||'[]'); }catch(e){}
+    envs=Array.isArray(arr)?arr:[];
+    renderEnvs(); populateEnvSelect();
+  }catch(e){}
+}
+function populateEnvSelect(){
+  const sel=$('envSel'); if(!sel) return;
+  const cur=sel.value;
+  sel.innerHTML='';
+  const none=document.createElement('option'); none.value=''; none.textContent='— none —'; sel.appendChild(none);
+  envs.forEach(e=>{ const o=document.createElement('option'); o.value=e.name; o.textContent=e.name; sel.appendChild(o); });
+  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
+}
+function renderEnvs(){
+  const list=$('envList'); if(!list) return;
+  $('env_count').textContent=envs.length;
+  if(!envs.length){ list.innerHTML='<div class="page-sub">No environments — press <b>New</b> to create one.</div>'; return; }
+  list.innerHTML='';
+  envs.forEach(e=>{
+    const keys=Object.keys(e.vars||{}); const n=keys.length;
+    const row=document.createElement('div'); row.className='conn';
+    const meta=document.createElement('div'); meta.className='meta';
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=e.name;
+    const u=document.createElement('div'); u.className='u';
+    u.textContent=n+' variable'+(n===1?'':'s')+(n?' · '+keys.slice(0,5).join(', ')+(n>5?'…':''):'');
+    meta.appendChild(nm); meta.appendChild(u); row.appendChild(meta);
+    const mk=(icon,label,cls,fn)=>{ const b=document.createElement('button'); b.className=cls+' mini'; b.innerHTML=icon+'<span>'+label+'</span>'; b.onclick=fn; return b; };
+    row.appendChild(mk(IC.edit,'Edit','ghost',()=>openEnvEditor(e.name)));
+    const sep=document.createElement('span'); sep.className='btn-sep'; row.appendChild(sep);
+    row.appendChild(mk(IC.stop,'Delete','tonal',()=>deleteEnv(e.name)));
+    list.appendChild(row);
+  });
+}
+function addEnvRow(k='',v=''){
+  const wrap=$('envVars'); if(!wrap) return;
+  const row=document.createElement('div'); row.className='env-row';
+  const ik=document.createElement('input'); ik.className='env-k'; ik.placeholder='name'; ik.value=k;
+  const iv=document.createElement('input'); iv.className='env-v'; iv.placeholder='value'; iv.value=v;
+  const del=document.createElement('button'); del.type='button'; del.className='iconbtn plain env-del'; del.title='Remove';
+  del.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  del.onclick=()=>row.remove();
+  row.appendChild(ik); row.appendChild(iv); row.appendChild(del);
+  wrap.appendChild(row);
+}
+function openEnvEditor(name){
+  const e=(typeof name==='string')?envs.find(x=>x.name===name):null;
+  $('env_title').textContent=e?e.name:'new';
+  $('env_name').value=e?e.name:'';
+  $('env_name').dataset.orig=e?e.name:'';
+  const wrap=$('envVars'); wrap.innerHTML='';
+  const entries=e?Object.entries(e.vars||{}):[];
+  if(entries.length) entries.forEach(([k,v])=>addEnvRow(k,v)); else { addEnvRow(); addEnvRow(); }
+  $('envModal').classList.remove('hidden');
+}
+function closeEnvEditor(){ $('envModal').classList.add('hidden'); }
+async function saveEnvEditor(){
+  const name=$('env_name').value.trim();
+  if(!name){ toast('Name required','Give the environment a name.','warn'); return; }
+  const vars={};
+  $('envVars').querySelectorAll('.env-row').forEach(row=>{
+    const k=row.querySelector('.env-k').value.trim();
+    if(k) vars[k]=row.querySelector('.env-v').value;
+  });
+  try{
+    const r=await call('/api/v1/env','env',{name, vars});
+    if(r.error && r.error.code){ toast('Save failed', r.error.message, 'error'); return; }
+    const orig=$('env_name').dataset.orig;
+    if(orig && orig!==name){ try{ await call('/api/v1/env-delete','env-delete',{name:orig}); }catch(_){} }  // renamed → drop the old row
+    closeEnvEditor(); await loadEnvs();
+    toast('Environment saved', `“${name}” saved with ${Object.keys(vars).length} variable(s).`, 'ok');
+  }catch(e){ toast('Save failed', e.message||'error', 'error'); }
+}
+async function deleteEnv(name){
+  try{
+    await call('/api/v1/env-delete','env-delete',{name});
+    await loadEnvs();
+    toast('Environment deleted', `“${name}” removed.`, 'info');
+  }catch(e){ toast('Delete failed', e.message||'error', 'error'); }
+}
+
 function openEditBookmark(name){
   const bm=bookmarks.find(b=>b.name===name); if(!bm) return;
   $('edit_name').textContent=bm.name;
@@ -1818,7 +1945,7 @@ function hideLogin(){ $('loginScreen').classList.add('hidden'); }
 function enterApp(email){
   hideLogin();
   $('userEmail').textContent=email||''; $('userchip').classList.remove('hidden');
-  if(!appStarted){ appStarted=true; loadBookmarks().then(()=>loadInfo()); if($('autopoll').checked) startPoll(); }
+  if(!appStarted){ appStarted=true; loadBookmarks().then(()=>loadInfo()); loadEnvs(); if($('autopoll').checked) startPoll(); }
 }
 // called by call() on any 401, and on logout
 function onUnauthorized(){

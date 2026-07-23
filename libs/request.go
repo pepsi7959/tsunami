@@ -16,6 +16,7 @@ type CmdConf struct {
 	Path        string            `json:"path"`
 	Protocol    string            `json:"protocol"`
 	Verbose     bool              `json:"verbose"`
+	Env         string            `json:"env"` // environment preset to apply ({{vars}} substituted at start)
 }
 
 // Request sturcture

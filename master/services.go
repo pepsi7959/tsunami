@@ -357,6 +357,109 @@ func (oc *Ocean) DeleteBookmark(w http.ResponseWriter, r *http.Request) {
 	tshttp.WriteSuccess(&w, nil, nil)
 }
 
+// --- environment presets (shared {{var}} sets) ---
+
+// GetEnvs returns all environments as a JSON string in data.envs.
+func (oc *Ocean) GetEnvs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	list, err := oc.auth.Store().ListEnvs()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not read envs"})
+		return
+	}
+	b, _ := json.Marshal(list)
+	data := map[string]string{"envs": string(b)}
+	tshttp.WriteSuccess(&w, &data, nil)
+}
+
+// SaveEnv upserts an environment (name + variable map).
+func (oc *Ocean) SaveEnv(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req struct {
+		Conf struct {
+			Name string            `json:"name"`
+			Vars map[string]string `json:"vars"`
+		} `json:"conf"`
+	}
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	name := strings.TrimSpace(req.Conf.Name)
+	if name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 400, Message: "env name is required"})
+		return
+	}
+	if err := oc.auth.Store().SaveEnv(&tsauth.Env{Name: name, Vars: req.Conf.Vars}); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not save env"})
+		return
+	}
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// DeleteEnv removes an environment.
+func (oc *Ocean) DeleteEnv(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		oc.Options(w, r)
+		return
+	}
+	cors(w, r)
+	var req tshttp.Request
+	if err := tshttp.Decoder(w, r, &req); err != nil {
+		return
+	}
+	if req.Conf.Name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 400, Message: "name is required"})
+		return
+	}
+	if err := oc.auth.Store().DeleteEnv(req.Conf.Name); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 500, Message: "could not delete env"})
+		return
+	}
+	tshttp.WriteSuccess(&w, nil, nil)
+}
+
+// applyEnv substitutes {{key}} tokens in the URL, path, body and header values
+// with the environment's variable values. Unknown {{...}} tokens are left intact
+// so the worker's per-request generators ({{uuid}}, {{seq}}, ...) still expand.
+func applyEnv(conf *tshttp.Conf, vars map[string]string) {
+	if len(vars) == 0 {
+		return
+	}
+	rep := func(s string) string {
+		if s == "" {
+			return s
+		}
+		for k, v := range vars {
+			s = strings.ReplaceAll(s, "{{"+k+"}}", v)
+		}
+		return s
+	}
+	conf.URL = rep(conf.URL)
+	conf.Path = rep(conf.Path)
+	conf.Body = rep(conf.Body)
+	for k, v := range conf.Headers {
+		conf.Headers[k] = rep(v)
+	}
+}
+
 // Start splits a load test across attached workers (reject if capacity short).
 func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
@@ -370,6 +473,14 @@ func (oc *Ocean) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	name := req.Conf.Name
 	conf := confFromReq(req.Conf)
+	// apply an environment preset (if selected): substitute its {{vars}} into the
+	// URL/path/body/headers now, so the substituted conf is what workers run and
+	// what a resume re-sends.
+	if envName := strings.TrimSpace(req.Conf.Env); envName != "" {
+		if e, err := oc.auth.Store().GetEnv(envName); err == nil && e != nil {
+			applyEnv(&conf, e.Vars)
+		}
+	}
 	requested := req.Conf.Concurrence
 
 	oc.mu.Lock()
