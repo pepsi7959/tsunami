@@ -1173,6 +1173,55 @@ function repChart(pts, key, color, yFmt, floor, band){
   <circle class="rc-dot" cx="${xOf(last.t).toFixed(1)}" cy="${yOf(last[key]).toFixed(1)}" r="4" fill="currentColor" stroke-width="2"/></svg>`;
 }
 
+// static p50/p95/p99 latency chart (smooth arcs), mirrors the dashboard Latency chart
+function repLatChart(pts){
+  const W=760,H=210,L=54,R=18,T=22,B=30;
+  if(!pts || pts.length<2) return '<div class="rc-empty">Not enough samples to plot.</div>';
+  const series=[{k:'p50',c:'var(--c-lat)',label:'p50'},{k:'p95',c:'var(--warn)',label:'p95'},{k:'p99',c:'var(--fail)',label:'p99'}];
+  const xs=pts.map(p=>p.t), x0=xs[0], x1=xs[xs.length-1]>x0?xs[xs.length-1]:x0+1;
+  let raw=0; pts.forEach(p=>series.forEach(se=>{ const v=+p[se.k]||0; if(v>raw) raw=v; }));
+  const ymax = raw>0 ? niceMax(raw*1.15) : 1;
+  const plotW=W-L-R, plotH=H-T-B;
+  const xOf=t=> L + (t-x0)/(x1-x0)*plotW;
+  const yOf=v=> Math.max(T, Math.min(T+plotH, T+plotH-(v/ymax)*plotH));
+  let g='';
+  for(let i=0;i<=4;i++){ const v=ymax*i/4, y=yOf(v).toFixed(1);
+    g+=`<line class="rc-grid" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke-width="1"/>`;
+    g+=`<text x="${L-9}" y="${(+y+3.5).toFixed(1)}" text-anchor="end" class="rc-ax">${fmtMs(v)}</text>`; }
+  const span=x1-x0, xd=span>=20?0:span>=4?1:2;
+  [0,.5,1].forEach(f=>{ const t=x0+span*f, a=f===0?'start':f===1?'end':'middle';
+    g+=`<text x="${xOf(t).toFixed(1)}" y="${H-9}" text-anchor="${a}" class="rc-ax">${fmtElapsed(t,xd)}</text>`; });
+  let lines='', lx=L+2;
+  series.forEach(se=>{
+    const P=pts.map(p=>({x:xOf(p.t), y:yOf(+p[se.k]||0)})), last=P[P.length-1];
+    lines+=`<path d="${smoothPath(P)}" fill="none" stroke="${se.c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    lines+=`<circle class="rc-dot" cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="${se.c}" stroke-width="2"/>`;
+    g+=`<rect x="${lx}" y="${T-15}" width="9" height="9" rx="2" fill="${se.c}"/><text x="${lx+13}" y="${T-7}" class="rc-ax" style="fill:${se.c}">${se.label}</text>`;
+    lx+=22+se.label.length*8; });
+  return `<svg viewBox="0 0 ${W} ${H}" class="rc-svg" role="img" aria-label="latency percentiles over time">${g}${lines}</svg>`;
+}
+
+// static latency-distribution heatmap (buckets over time), mirrors the dashboard heatmap
+function repHeat(pts){
+  const W=760,H=250,L=58,R=14,T=10,B=24, nB=LAT_LABELS.length;
+  const P=(pts||[]).filter(s=>s.hist && s.hist.length);
+  if(P.length<1) return '<div class="rc-empty">No latency distribution captured.</div>';
+  const plotW=W-L-R, plotH=H-T-B, cw=plotW/P.length, rh=plotH/nB;
+  let maxC=1; P.forEach(s=>s.hist.forEach(c=>{ if(c>maxC) maxC=c; }));
+  const logMax=Math.log(maxC+1);
+  let cells='';
+  P.forEach((s,ci)=>{ for(let bi=0;bi<nB;bi++){ const c=s.hist[bi]||0, row=nB-1-bi;
+    const op = c>0 ? (0.10+0.90*(Math.log(c+1)/logMax)) : 0;
+    if(op>0) cells+=`<rect x="${(L+ci*cw).toFixed(1)}" y="${(T+row*rh).toFixed(1)}" width="${(cw+0.6).toFixed(1)}" height="${(rh+0.6).toFixed(1)}" fill="var(--c-lat)" fill-opacity="${op.toFixed(3)}"/>`; } });
+  let ax='';
+  for(let bi=0;bi<nB;bi++){ if(bi%2!==0 && bi!==nB-1) continue; const row=nB-1-bi, y=(T+row*rh+rh/2+3).toFixed(1);
+    ax+=`<text x="${L-8}" y="${y}" text-anchor="end" class="rc-ax">${LAT_LABELS[bi]}ms</text>`; }
+  const span=(P[P.length-1].t-P[0].t)||1, xd=span>=20?0:span>=4?1:2;
+  [0,.5,1].forEach(f=>{ const ci=Math.round((P.length-1)*f), x=(L+ci*cw+cw/2).toFixed(1), a=f===0?'start':f===1?'end':'middle';
+    ax+=`<text x="${x}" y="${H-7}" text-anchor="${a}" class="rc-ax">${fmtElapsed(P[ci].t,xd)}</text>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" class="rc-svg" role="img" aria-label="latency distribution heatmap">${cells}${ax}</svg>`;
+}
+
 // static, string-only topology diagram (ocean -> worker -> target), mirrors renderTopo layout
 function repTopo(g){
   const TW=1000, TH=400;
@@ -1225,6 +1274,9 @@ async function generateReport(name){
     const rq=+d.RequestCount||0, ec=+d.error_count||0;
     src={ rps:+d.rps||0, req:rq, avg:+d.avg||0, min:+d.min||0, max:+d.max||0,
           err:ec, rate: rq>0?ec/rq*100:0, wrk:+d.workerCount||0, t:+d.ElapedTime||0 };
+    // snapshot has no per-interval buffer, so derive percentiles from the cumulative histogram
+    let hb=[]; try{ hb=JSON.parse(d.buckets||'[]').map(Number); }catch(_){}
+    src.p50=pctlFromHist(hb,0.50); src.p95=pctlFromHist(hb,0.95); src.p99=pctlFromHist(hb,0.99);
   }
 
   // cluster topology (per-test target + the diagram below)
@@ -1250,7 +1302,8 @@ async function generateReport(name){
 
   // frozen KPI values (mirror the dashboard tiles 1:1)
   const rps=+src.rps||0, requests=+src.req||0, errors=+src.err||0, duration=+src.t||0,
-        workers=+src.wrk||0, avgLat=+src.avg||0, minLat=+src.min||0, maxLat=+src.max||0;
+        workers=+src.wrk||0, avgLat=+src.avg||0, minLat=+src.min||0, maxLat=+src.max||0,
+        p95Lat=+src.p95||0, p99Lat=+src.p99||0;
   const errRate = requests>0 ? errors/requests*100 : 0;   // overall — drives the tile + verdict
 
   const verdict = errRate<1 ? {cls:'pass',label:'PASSED', note:'Error rate under 1% — the target held up under load.'}
@@ -1384,6 +1437,8 @@ ${ (topo.nodes&&topo.nodes.length) ? `
   ${kpi('Error rate', (errRate>=10?Math.round(errRate):errRate.toFixed(2)),'%')}
   ${kpi('Min latency', minLat.toFixed(1),'ms')}
   ${kpi('Max latency', maxLat.toFixed(1),'ms')}
+  ${kpi('p95 latency', p95Lat.toFixed(1),'ms')}
+  ${kpi('p99 latency', p99Lat.toFixed(1),'ms')}
   ${kpi('Workers', workers)}
   ${kpi('Elapsed', Math.round(duration),'s')}
  </div>
@@ -1394,8 +1449,12 @@ ${ hasSeries ? `
   ${repChart(pts,'rps','var(--c-rps)',fmtInt,1)}</div>
 
  <h2>Latency over time</h2>
- <div class="card"><div class="ct"><span class="dot" style="background:var(--c-lat)"></span>Average latency (ms) · band = recent range</div>
-  ${repChart(pts,'avg','var(--c-lat)',v=>(v>=100?String(Math.round(v)):v.toFixed(1)),1,true)}</div>
+ <div class="card"><div class="ct"><span class="dot" style="background:var(--c-lat)"></span>Latency percentiles (ms) · p50 / p95 / p99 · per interval</div>
+  ${repLatChart(pts)}</div>
+
+ <h2>Latency distribution</h2>
+ <div class="card"><div class="ct"><span class="dot" style="background:var(--c-lat)"></span>Requests per latency bucket over time · brighter = more</div>
+  ${repHeat(pts)}</div>
 
  <h2>Error rate over time</h2>
  <div class="card"><div class="ct"><span class="dot" style="background:var(--c-rate)"></span>Errors as % of requests</div>
