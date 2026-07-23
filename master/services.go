@@ -62,6 +62,21 @@ func confFromReq(c tshttp.CmdConf) tshttp.Conf {
 	}
 }
 
+// confFromBookmark builds a load-test conf from a saved test (bookmark). The
+// bookmark holds the raw template ({{tokens}} intact), so an env can still be
+// applied on top when the job (re)starts.
+func confFromBookmark(b *tsauth.Bookmark) tshttp.Conf {
+	return tshttp.Conf{
+		Name:        b.Name,
+		URL:         b.URL,
+		Method:      b.Method,
+		Headers:     b.Headers,
+		Body:        b.Body,
+		Concurrence: b.Concurrence,
+		Verbose:     b.Verbose,
+	}
+}
+
 func startCommand(name string, conf tshttp.Conf, take int) *tsgrpc.OceanMessage {
 	return &tsgrpc.OceanMessage{Msg: &tsgrpc.OceanMessage_Command{Command: &tsgrpc.Command{
 		Action: tsgrpc.Action_START,
@@ -660,15 +675,60 @@ func (oc *Ocean) Resume(w http.ResponseWriter, r *http.Request) {
 		tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 404, Message: "service not found"})
 		return
 	}
-	// re-apply the current active env to the raw conf so continue always runs
-	// with the latest selected environment.
-	conf := confWithEnv(j.rawConf, oc.envVars(oc.activeEnv()))
-	for id, take := range j.assignments {
+	// pull the latest config from a same-named saved test if one exists, so an
+	// edit to that bookmark (URL/body/headers/concurrency) takes effect on
+	// continue; otherwise reuse the config the job started with. Then re-apply
+	// the current active env.
+	raw := j.rawConf
+	if bm, err := oc.auth.Store().GetBookmark(name); err == nil && bm != nil {
+		raw = confFromBookmark(bm)
+	}
+	conf := confWithEnv(raw, oc.envVars(oc.activeEnv()))
+
+	// re-allocate worker slots if the edited concurrency differs from what the
+	// job currently holds.
+	assignments := j.assignments
+	requested := raw.Concurrence
+	cur := 0
+	for _, take := range j.assignments {
+		cur += take
+	}
+	if requested > 0 && requested != cur {
+		for id, take := range j.assignments { // release the held reservation
+			if wk := oc.workers[id]; wk != nil {
+				wk.used -= take
+				if wk.used < 0 {
+					wk.used = 0
+				}
+			}
+		}
+		alloc, ok := oc.allocate(requested)
+		if !ok { // restore the reservation and report — the test stays paused
+			for id, take := range j.assignments {
+				if wk := oc.workers[id]; wk != nil {
+					wk.used += take
+				}
+			}
+			oc.mu.Unlock()
+			tshttp.WriteSuccess(&w, nil, &tshttp.Error{Code: 503, Message: "insufficient worker capacity for the edited concurrency"})
+			return
+		}
+		assignments = alloc
+		for id, take := range alloc { // reserve the new allocation (allocate only plans)
+			if wk := oc.workers[id]; wk != nil {
+				wk.used += take
+			}
+		}
+	}
+
+	for id, take := range assignments {
 		if wk := oc.workers[id]; wk != nil {
 			wk.command(startCommand(j.name, conf, take))
 		}
 	}
+	j.assignments = assignments
 	j.conf = conf
+	j.rawConf = raw
 	j.paused = false
 	oc.mu.Unlock()
 
