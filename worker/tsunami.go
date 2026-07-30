@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"os"
 	"strconv"
@@ -113,8 +114,16 @@ func (ts *Tsunami) Init(maxQueues int) {
 		host = ts.conf.Host + ":" + ts.conf.Port
 	}
 
+	// fasthttp ตีความ MaxConns <= 0 ว่าให้ใช้ DefaultMaxConnsPerHost (512) ซึ่งเป็นเพดาน
+	// ในโค้ดที่ทำให้ได้ ErrNoFreeConns ตั้งแต่ยังไม่แตะขีดจำกัดของ OS เลย ตั้งค่าสูงจนไม่มีผล
+	// เพื่อให้ตัวจำกัดจริงเป็น fd (ulimit -n) และ ephemeral port ของ OS
+	maxConns := ts.conf.MaxConns
+	if maxConns <= 0 {
+		maxConns = math.MaxInt32
+	}
+
 	c := &fasthttp.HostClient{Addr: host,
-		MaxConns:     ts.conf.MaxConns,
+		MaxConns:     maxConns,
 		ReadTimeout:  time.Second * 30,
 		WriteTimeout: time.Second * 30,
 		IsTLS:        isTLS,
@@ -346,6 +355,10 @@ func readConf() *viper.Viper {
 	viper.SetDefault("concurence", 10)
 	viper.SetDefault("mode", "cluster")
 
+	// max connections per target host. 0 = ไม่จำกัดในโค้ด ปล่อยให้ fd (ulimit -n) และ
+	// ephemeral port ของ OS เป็นตัวจำกัด ใส่เลขถ้าต้องการเพดานฝั่ง worker เอง
+	viper.SetDefault("max_conns", 0)
+
 	// Ocean bootstrap: the worker dials one of these ocean gRPC endpoints and
 	// keeps an outbound stream. (etcd-based discovery is layered on top later.)
 	viper.SetDefault("ocean.endpoints", []string{"127.0.0.1:8050"})
@@ -405,6 +418,7 @@ func main() {
 		workerID: ctrl.id,
 		name:     ctrl.name,
 		maxConc:  int32(config.GetInt("concurence")),
+		maxConns: config.GetInt("max_conns"),
 		report:   time.Duration(interval) * time.Second,
 		token:    config.GetString("auth.token"),
 	}

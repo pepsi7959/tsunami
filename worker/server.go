@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ type OceanClient struct {
 	workerID string
 	name     string
 	maxConc  int32
+	maxConns int           // max conns per target host; 0 = no cap in code (OS decides)
 	report   time.Duration // metrics report interval
 	token    string        // optional attach auth token
 
@@ -184,6 +186,7 @@ func (c *OceanClient) handleCommand(cmd *tsgrpc.Command) {
 			Headers:     defaultHeaders(method, headersFromParams(p.GetHeader())),
 			Body:        p.GetBody(),
 			Concurrence: int(p.GetConcurrency()),
+			MaxConns:    c.maxConns,
 		}
 		c.startService(name, conf, p.GetVerbose())
 	case tsgrpc.Action_STOP:
@@ -199,7 +202,11 @@ func (c *OceanClient) startService(name string, conf tshttp.Conf, verbose bool) 
 		existing.Stop()
 		delete(c.ctrl.services, name)
 	}
-	log.Printf("start: %s -> %s (%d concurrency, verbose=%v)", name, conf.URL, conf.Concurrence, verbose)
+	maxConns := "unlimited (OS)"
+	if conf.MaxConns > 0 {
+		maxConns = strconv.Itoa(conf.MaxConns)
+	}
+	log.Printf("start: %s -> %s (%d concurrency, maxConns=%s, verbose=%v)", name, conf.URL, conf.Concurrence, maxConns, verbose)
 	app := &Tsunami{done: false, conf: conf, duration: 3600, refresh: 2, enableReport: false, verbose: verbose}
 	app.Init(100000)
 	c.ctrl.services[name] = app

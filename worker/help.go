@@ -22,7 +22,7 @@ func ReadConf() tshttp.Conf {
 	var path = flag.String("uri", "/", "uri path")
 	var concurrence = flag.Int("concurrence", 10, "number of clients, which send request to the tagets simultaneously")
 	var maxQueues = flag.Int("maxQueues", 60000, "maxQueues are wating job generated controlled by master node")
-	var maxConns = flag.Int("maxConns", 1024, "maxConns are number of connections")
+	var maxConns = flag.Int("maxConns", 0, "max connections per host; 0 means no cap in code, let the OS (ulimit -n, ephemeral ports) be the limit")
 
 	flag.Parse()
 
