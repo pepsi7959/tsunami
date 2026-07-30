@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -122,11 +123,21 @@ func (ts *Tsunami) Init(maxQueues int) {
 		maxConns = math.MaxInt32
 	}
 
+	// target ที่ทดสอบมักเป็น endpoint ภายใน จึงต้องยิงผ่าน cert ที่ self-signed,
+	// หมดอายุ, หรือไม่ match hostname (เช่นยิงเข้า IP ตรง ๆ) ได้ — ปิดได้ด้วย
+	// insecure_skip_verify: false ใน config ถ้าต้องการตรวจ cert ตามปกติ
+	//nolint:gosec // G402 ตั้งใจ: เป็น load generator ไม่ใช่ client ที่รับส่งข้อมูลจริง
+	var tlsConf *tls.Config
+	if isTLS && ts.conf.InsecureSkipVerify {
+		tlsConf = &tls.Config{InsecureSkipVerify: true}
+	}
+
 	c := &fasthttp.HostClient{Addr: host,
 		MaxConns:     maxConns,
 		ReadTimeout:  time.Second * 30,
 		WriteTimeout: time.Second * 30,
 		IsTLS:        isTLS,
+		TLSConfig:    tlsConf,
 		Dial:         func(addr string) (net.Conn, error) { return fasthttp.DialTimeout(addr, time.Second*60) }}
 	if ts.verbose {
 		ts.sample = &sampleRec{}
@@ -359,6 +370,11 @@ func readConf() *viper.Viper {
 	// ephemeral port ของ OS เป็นตัวจำกัด ใส่เลขถ้าต้องการเพดานฝั่ง worker เอง
 	viper.SetDefault("max_conns", 0)
 
+	// ข้ามการตรวจ TLS certificate ของ target. default true เพราะ endpoint ที่ทดสอบ
+	// มักใช้ self-signed cert / cert หมดอายุ / ถูกยิงด้วย IP ที่ไม่ match hostname
+	// ตั้ง false ถ้าต้องการให้ตรวจ cert ตามปกติ
+	viper.SetDefault("insecure_skip_verify", true)
+
 	// Ocean bootstrap: the worker dials one of these ocean gRPC endpoints and
 	// keeps an outbound stream. (etcd-based discovery is layered on top later.)
 	viper.SetDefault("ocean.endpoints", []string{"127.0.0.1:8050"})
@@ -421,6 +437,8 @@ func main() {
 		maxConns: config.GetInt("max_conns"),
 		report:   time.Duration(interval) * time.Second,
 		token:    config.GetString("auth.token"),
+
+		insecureSkipVerify: config.GetBool("insecure_skip_verify"),
 	}
 
 	// Resolver picks which ocean to attach to on each (re)connect.

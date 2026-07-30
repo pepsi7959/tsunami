@@ -28,6 +28,8 @@ type OceanClient struct {
 	report   time.Duration // metrics report interval
 	token    string        // optional attach auth token
 
+	insecureSkipVerify bool // skip TLS cert checks on the target (default true)
+
 	mu sync.Mutex // guards ctrl.services
 }
 
@@ -187,6 +189,8 @@ func (c *OceanClient) handleCommand(cmd *tsgrpc.Command) {
 			Body:        p.GetBody(),
 			Concurrence: int(p.GetConcurrency()),
 			MaxConns:    c.maxConns,
+
+			InsecureSkipVerify: c.insecureSkipVerify,
 		}
 		c.startService(name, conf, p.GetVerbose())
 	case tsgrpc.Action_STOP:
@@ -206,7 +210,8 @@ func (c *OceanClient) startService(name string, conf tshttp.Conf, verbose bool) 
 	if conf.MaxConns > 0 {
 		maxConns = strconv.Itoa(conf.MaxConns)
 	}
-	log.Printf("start: %s -> %s (%d concurrency, maxConns=%s, verbose=%v)", name, conf.URL, conf.Concurrence, maxConns, verbose)
+	log.Printf("start: %s -> %s (%d concurrency, maxConns=%s, insecureSkipVerify=%v, verbose=%v)",
+		name, conf.URL, conf.Concurrence, maxConns, conf.InsecureSkipVerify, verbose)
 	app := &Tsunami{done: false, conf: conf, duration: 3600, refresh: 2, enableReport: false, verbose: verbose}
 	app.Init(100000)
 	c.ctrl.services[name] = app
